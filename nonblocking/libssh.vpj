@@ -1,0 +1,286 @@
+<!DOCTYPE Project SYSTEM "http://www.slickedit.com/dtd/vse/10.0/vpj.dtd">
+<Project
+	Version="10.0"
+	VendorName="SlickEdit"
+	WorkingDir=".">
+	<Config
+		Name="Debug"
+		Type="gnuc"
+		DebugCallbackName="gdb"
+		Version="1"
+		OutputFile="%bdlibssh.so"
+		CompilerConfigName="Latest Version">
+		<Menu>
+			<Target
+				Name="Compile"
+				MenuCaption="&amp;Compile"
+				Dialog="_gnuc_options_form Compile"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				OutputExts="*.o"
+				SaveOption="SaveCurrent"
+				RunFromDir="%rw">
+				<Exec CmdLine='gcc -c %xup  %defd -g -o "%bd%n%oe" %i "%f"'/>
+			</Target>
+			<Target
+				Name="Link"
+				MenuCaption="&amp;Link"
+				ShowOnMenu="Never"
+				Dialog="_gnuc_options_form Link"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveCurrent"
+				RunFromDir="%rw">
+				<Exec CmdLine='gcc %xup -g -o "%o" %f %libs -shared -fPIC'/>
+			</Target>
+			<Target
+				Name="Build"
+				MenuCaption="&amp;Build"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine="make"/>
+			</Target>
+			<Target
+				Name="Rebuild"
+				MenuCaption="&amp;Rebuild"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="Debug"
+				MenuCaption="&amp;Debug"
+				Dialog="_gnuc_options_form Run/Debug"
+				BuildFirst="1"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveNone"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="Execute"
+				MenuCaption="E&amp;xecute"
+				Dialog="_gnuc_options_form Run/Debug"
+				BuildFirst="1"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="dash"
+				MenuCaption="-"
+				Deletable="0">
+				<Exec/>
+			</Target>
+			<Target
+				Name="GNU C Options"
+				MenuCaption="GNU C &amp;Options..."
+				ShowOnMenu="HideIfNoCmdLine"
+				Deletable="0"
+				SaveOption="SaveNone">
+				<Exec
+					CmdLine="gnucoptions"
+					Type="Slick-C"/>
+			</Target>
+		</Menu>
+	</Config>
+	<Config
+		Name="Release"
+		Type="gnuc"
+		DebugCallbackName="gdb"
+		Version="1"
+		OutputFile="%bdlibssh.so"
+		CompilerConfigName="Latest Version">
+		<Menu>
+			<Target
+				Name="Compile"
+				MenuCaption="&amp;Compile"
+				Dialog="_gnuc_options_form Compile"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				OutputExts="*.o"
+				SaveOption="SaveCurrent"
+				RunFromDir="%rw">
+				<Exec CmdLine='gcc -c %xup %defd -o "%bd%n%oe" %i "%f"'/>
+			</Target>
+			<Target
+				Name="Link"
+				MenuCaption="&amp;Link"
+				ShowOnMenu="Never"
+				Dialog="_gnuc_options_form Link"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveCurrent"
+				RunFromDir="%rw">
+				<Exec CmdLine='gcc %xup -o "%o" %f %libs -shared -fPIC'/>
+			</Target>
+			<Target
+				Name="Build"
+				MenuCaption="&amp;Build"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine="make"/>
+			</Target>
+			<Target
+				Name="Rebuild"
+				MenuCaption="&amp;Rebuild"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="Debug"
+				MenuCaption="&amp;Debug"
+				Dialog="_gnuc_options_form Run/Debug"
+				BuildFirst="1"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveNone"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="Execute"
+				MenuCaption="E&amp;xecute"
+				Dialog="_gnuc_options_form Run/Debug"
+				BuildFirst="1"
+				CaptureOutputWith="ProcessBuffer"
+				Deletable="0"
+				SaveOption="SaveWorkspaceFiles"
+				RunFromDir="%rw">
+				<Exec CmdLine=""/>
+			</Target>
+			<Target
+				Name="dash"
+				MenuCaption="-"
+				Deletable="0">
+				<Exec/>
+			</Target>
+			<Target
+				Name="GNU C Options"
+				MenuCaption="GNU C &amp;Options..."
+				ShowOnMenu="HideIfNoCmdLine"
+				Deletable="0"
+				SaveOption="SaveNone">
+				<Exec
+					CmdLine="gnucoptions"
+					Type="Slick-C"/>
+			</Target>
+		</Menu>
+	</Config>
+	<Files>
+		<Folder
+			Name="Source Files"
+			Filters="*.c;*.C;*.cc;*.cpp;*.cp;*.cxx;*.prg;*.pas;*.dpr;*.asm;*.s;*.bas;*.java;*.cs;*.sc;*.e;*.cob;*.html;*.rc;*.tcl;*.py;*.pl">
+			<F N="libssh/auth.c"/>
+			<F N="libssh/auth1.c"/>
+			<F N="libssh/base64.c"/>
+			<F N="libssh/buffer.c"/>
+			<F N="libssh/channels.c"/>
+			<F N="libssh/channels1.c"/>
+			<F N="libssh/client.c"/>
+			<F N="libssh/connect.c"/>
+			<F N="libssh/crc32.c"/>
+			<F N="libssh/crypt.c"/>
+			<F N="libssh/dh.c"/>
+			<F N="libssh/error.c"/>
+			<F N="libssh/gcrypt_missing.c"/>
+			<F N="sftp_server/libconfig/getuid.c"/>
+			<F N="libssh/gzip.c"/>
+			<F N="libssh/kex.c"/>
+			<F N="libssh/keyfiles.c"/>
+			<F N="libssh/keys.c"/>
+			<F N="libssh/messages.c"/>
+			<F N="libssh/misc.c"/>
+			<F N="libssh/options.c"/>
+			<F N="libssh/packet.c"/>
+			<F N="sftp_server/protocol.c"/>
+			<F N="libssh/server.c"/>
+			<F N="libssh/session.c"/>
+			<F N="libssh/sftp.c"/>
+			<F N="libssh/sftpserver.c"/>
+			<F N="libssh/socket.c"/>
+			<F N="libssh/string.c"/>
+			<F N="sftp_server/libconfig/strsep.c"/>
+			<F N="sftp_server/libconfig/strtoll.c"/>
+			<F N="sftp_server/libconfig/test-lc.c"/>
+			<F N="sftp_server/userauth.c"/>
+			<F N="libssh/wrapper.c"/>
+		</Folder>
+		<Folder
+			Name="Header Files"
+			Filters="*.h;*.H;*.hh;*.hpp;*.hxx;*.inc;*.sh;*.cpy;*.if">
+			<F N="include/libssh/auth.h"/>
+			<F N="include/libssh/auth1.h"/>
+			<F N="include/libssh/banner.h"/>
+			<F N="include/libssh/base64.h"/>
+			<F N="include/libssh/buffer.h"/>
+			<F N="include/libssh/channel.h"/>
+			<F N="include/libssh/channels1.h"/>
+			<F N="include/libssh/client.h"/>
+			<F N="sftp_server/libconfig/compat.h"/>
+			<F N="include/libssh/connect.h"/>
+			<F N="include/libssh/crc32.h"/>
+			<F N="include/libssh/crypt.h"/>
+			<F N="include/libssh/crypto.h"/>
+			<F N="include/libssh/dh.h"/>
+			<F N="include/libssh/errors.h"/>
+			<F N="sftp_server/libconfig/getuid.h"/>
+			<F N="include/libssh/gzip.h"/>
+			<F N="include/libssh/kex.h"/>
+			<F N="include/libssh/keyfiles.h"/>
+			<F N="include/libssh/keys.h"/>
+			<F N="include/libssh/libssh.h"/>
+			<F N="include/libssh/messages.h"/>
+			<F N="include/libssh/options.h"/>
+			<F N="include/libssh/packet.h"/>
+			<F N="include/libssh/priv.h"/>
+			<F N="include/libssh/server.h"/>
+			<F N="include/libssh/session.h"/>
+			<F N="include/libssh/sftp.h"/>
+			<F N="include/libssh/socket.h"/>
+			<F N="include/libssh/ssh1.h"/>
+			<F N="include/libssh/ssh2.h"/>
+			<F N="include/libssh/string.h"/>
+			<F N="sftp_server/libconfig/strsep.h"/>
+			<F N="sftp_server/libconfig/strtoll.h"/>
+			<F N="sftp_server/libconfig/win32.h"/>
+			<F N="include/libssh/wrapper.h"/>
+		</Folder>
+		<Folder
+			Name="Resource Files"
+			Filters="*.ico;*.cur;*.dlg">
+			<Folder
+				Name="libssh"
+				Filters="">
+				<F N="libssh/Makefile"/>
+				<F N="libssh/Makefile.in"/>
+			</Folder>
+			<Folder
+				Name="sftpserver"
+				Filters="">
+				<F N="sftp_server/main.c"/>
+				<F N="sftp_server/Makefile"/>
+				<F N="sftp_server/Makefile.in"/>
+			</Folder>
+			<F N="Makefile.in"/>
+		</Folder>
+		<Folder
+			Name="Bitmaps"
+			Filters="*.bmp"/>
+		<Folder
+			Name="Other Files"
+			Filters=""/>
+	</Files>
+</Project>
