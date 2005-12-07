@@ -12,15 +12,18 @@
 #include "libssh/packet.h"
 #include "libssh/buffer.h"
 #include "libssh/session.h"
+#include "libssh/socket.h"
+#include "libssh/connect.h"
+
 
 /* in nonblocking mode, socket_read will read as much as it can, and return */
 /* SSH_OK if it has read at least len bytes, otherwise, SSH_AGAIN. */
 /* in blocking mode, it will read at least len bytes and will block until it's ok. */
 
-static ssh_retval socket_read(SSH_SESSION *session,int len)
+ssh_retval socket_read(SSH_SESSION *session,int len)
 {
 	logPF();
-    int except, can_write;
+    int except, can_read=0;
     int to_read;
     int r;
 //    char *buf;
@@ -32,17 +35,21 @@ static ssh_retval socket_read(SSH_SESSION *session,int len)
         session->in_socket_buffer=buffer_new();
 
     to_read=len - buffer_get_rest_len(session->in_socket_buffer);
+
+	ssh_say(1,"\tshall read %i, %i in in_socket_buffer, %i to go\n",len,buffer_get_rest_len(session->in_socket_buffer),to_read);
+
 	if ( to_read <= 0 )
-		return SSH_OK;
+	{
+		
+    	return SSH_OK;
+	}
 	else
 	{
-		do
+//		do
 		{
-			ssh_say(1,"pre buffer %i : %i\n", to_read, len - buffer_get_rest_len(session->in_socket_buffer) - to_read);
-			ssh_fd_poll(session,&can_write,&except); /* internally sets data_to_read */
-			if ( !session->data_to_read )
+			ssh_fd_poll(session,NULL,&can_read,&except); /* internally sets data_to_read */
+			if ( can_read == 0)
 			{
-				ssh_say(1,"socket_read requested %i bytes, read %i bytes, returning SSH_AGAIN\n",to_read, to_read - buffer_get_rest_len(session->in_socket_buffer));
             	return SSH_AGAIN;
 			}
 			session->data_to_read=0;
@@ -53,7 +60,6 @@ static ssh_retval socket_read(SSH_SESSION *session,int len)
 				switch ( errno )
 				{
 				case EAGAIN:
-					ssh_say(1,"socket_read requested %i bytes, read %i bytes, returning SSH_AGAIN\n",to_read, to_read - buffer_get_rest_len(session->in_socket_buffer));
 					ret = SSH_AGAIN;
 					break;
 
@@ -78,14 +84,14 @@ static ssh_retval socket_read(SSH_SESSION *session,int len)
 				buffer_add_data(session->in_socket_buffer,buffer,r);
 			}
 			ssh_say(1,"post buffer %i : %i\n", to_read, len - buffer_get_rest_len(session->in_socket_buffer));
-		} while ( buffer_get_rest_len(session->in_socket_buffer)<len );
+		} //while ( buffer_get_rest_len(session->in_socket_buffer)<len );
 	}
 	return ret;
 }
 
 
 /* this function places the outgoing packet buffer into an outgoing socket buffer */
-static ssh_retval socket_write(SSH_SESSION *session)
+ssh_retval socket_write(SSH_SESSION *session)
 {
 	if ( !session->out_socket_buffer )
 	{
@@ -96,4 +102,5 @@ static ssh_retval socket_write(SSH_SESSION *session)
 					buffer_get_len(session->out_buffer));
 	return packet_flush(session);
 }
+
 
