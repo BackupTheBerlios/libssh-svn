@@ -266,6 +266,7 @@
 				Filters="">
 				<F N="libssh/Makefile"/>
 				<F N="libssh/Makefile.in"/>
+				<F N="sample.c"/>
 			</Folder>
 			<Folder
 				Name="sftpserver"

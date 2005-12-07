@@ -237,6 +237,7 @@ int ssh_service_request(SSH_SESSION *session,char *service)
 
 ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
 {
+	logPF();
 	ssh_retval retval = SSH_ERROR;
 
 	switch (session->state)
@@ -332,7 +333,7 @@ ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
 	default:
 		ssh_say(1,"%s:%i unwanted state %i\n",__PRETTY_FUNCTION__,__LINE__,session->state);
 	}
-
+	ssh_say(1,"\t ssh_connect_nonblocking returns %i\n",retval);
 	return retval;
 }
 
@@ -455,18 +456,26 @@ ssh_retval ssh_again(SSH_SESSION *session)
 
 	case SSH_STATE_NONE:
 	case SSH_STATE_CONNECTING:
-		retval = ssh_connect(session);
-		if (retval == SSH_OK)
 		{
-        	session->state = SSH_STATE_CONNECTED;
+			retval = ssh_connect(session);
+			switch ( retval )
+			{
+			case SSH_OK:
+				session->state = SSH_STATE_CONNECTED;
+				break;
+
+			case SSH_AGAIN:
+			case SSH_ERROR:
+				return retval;
+				break;
+			}
 		}
-		break;
 
 	case SSH_STATE_CONNECTED:
 		/* here we call the connect callback */
 		session->state = SSH_STATE_BANNER_RECEIVE;
 		session->alive = 1;
-		break;
+
 
 	case SSH_STATE_BANNER_RECEIVE:
 		if (ssh_banner_get(session) == SSH_OK )
@@ -677,6 +686,8 @@ ssh_retval ssh_connect(SSH_SESSION *session)
 	
 	session->client=1;
 
+	ssh_retval fnret;
+
 	ssh_crypto_init();
 	if(session->options->blocking == 1 )
 	{
@@ -684,12 +695,12 @@ ssh_retval ssh_connect(SSH_SESSION *session)
 		return SSH_ERROR;
 	}else
 	{
-		ssh_retval retval =  ssh_connect_nonblocking(session);
-		switch (retval)
+		fnret =  ssh_connect_nonblocking(session);
+		switch (fnret)
 		{
 		case SSH_OK:
 			session->state = SSH_STATE_CONNECTED;
-			break;
+            break;
 
 		case SSH_AGAIN:
 			session->state = SSH_STATE_CONNECTING;
@@ -701,7 +712,7 @@ ssh_retval ssh_connect(SSH_SESSION *session)
 		}
 
 	}
-	return SSH_AGAIN;
+	return fnret;
 }
 
 char *ssh_get_issue_banner(SSH_SESSION *session){

@@ -411,13 +411,14 @@ int main(int argc, char **argv){
     }else
 	if ( retval == SSH_AGAIN )
 	{
-		printf("SAMPLE: got ssh_again, selecting\n");
+		
 		fd_set rfds, wfds;
 		struct timeval timeout;
 		int maxfd;
 		int ret;
 		do
 		{
+			printf("SAMPLE: got ssh_again, selecting\n");
 			FD_ZERO(&rfds);
 			FD_ZERO(&wfds);
 
@@ -463,6 +464,7 @@ int main(int argc, char **argv){
 			{
 				retval = ssh_again(session);
 			}
+			printf("SAMPLE revtal = %i\n",retval);
 
 		} while ( retval == SSH_AGAIN );
 
