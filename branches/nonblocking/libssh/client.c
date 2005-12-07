@@ -503,13 +503,14 @@ ssh_retval ssh_again(SSH_SESSION *session)
 				break;
 			case SSH_AGAIN:
 				session->state = SSH_STATE_BANNER_SENDING;
+				return SSH_AGAIN;
 				break;
 			case SSH_ERROR:
-				retval = SSH_ERROR;
+				return SSH_ERROR;
 				break;
 			}
 		}
-		break;
+		
 
 	case SSH_STATE_KEX_GET:
 		{

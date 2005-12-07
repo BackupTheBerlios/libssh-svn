@@ -526,7 +526,7 @@ int main(int argc, char **argv){
 	banner=NULL;
 	auth = SSH_AUTH_DENIED;
 	password=NULL;
-/*
+
     auth=ssh_userauth_autopubkey(session);
     if(auth==SSH_AUTH_ERROR){
         fprintf(stderr,"Authenticating with pubkey: %s\n",ssh_get_error(session));
@@ -538,7 +538,7 @@ int main(int argc, char **argv){
         free(banner);
     }
 
-*/
+
     if(auth!=SSH_AUTH_SUCCESS){
         auth=auth_kbdint(session);
         if(auth==SSH_AUTH_ERROR){
