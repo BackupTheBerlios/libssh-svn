@@ -162,7 +162,7 @@ int ssh_connect_host(SSH_SESSION *session, const char *host, const char
 
 /* returns 1 if bytes are available to read on the stream, 0 instead */
 /* -1 on select() error. */
-int ssh_fd_poll(SSH_SESSION *session, int *write, int *except){
+int ssh_fd_poll(SSH_SESSION *session, int *can_write, int *can_read ,int *except){
     struct timeval sometime;
     fd_set rdes; // read set
     fd_set wdes; // writing set
@@ -172,15 +172,21 @@ int ssh_fd_poll(SSH_SESSION *session, int *write, int *except){
     FD_ZERO(&wdes);
     FD_ZERO(&edes);
     
-    if(!session->alive){
-        *except=1;
-        *write=0;
+    if(0)//!session->alive)
+	{
+		if (except != NULL)
+		{
+			*except=1;
+		}
+        if (can_write != NULL)
+		{
+			*can_write=0;
+		}
         return 0;
     }
-    if(!session->data_to_read)
-        FD_SET(session->fd,&rdes);
-    if(!session->data_to_write)
-        FD_SET(session->fd,&wdes);
+
+	FD_SET(session->fd,&rdes);
+    FD_SET(session->fd,&wdes);
     FD_SET(session->fd,&edes);
     
     /* Set to return immediately (no blocking) */
@@ -188,16 +194,21 @@ int ssh_fd_poll(SSH_SESSION *session, int *write, int *except){
     sometime.tv_usec = 0;
     
     /* Make the call, and listen for errors */
-    if (select(session->fd + 1, &rdes,&wdes,&edes, &sometime) < 0) {
+    if (select(session->fd + 1, &rdes,&wdes,&edes, &sometime) < 0) 
+	{
     	ssh_set_error(NULL,SSH_FATAL, "select: %s", strerror(errno));
     	return -1;
     }
-    if(!session->data_to_read)
-        session->data_to_read=FD_ISSET(session->fd,&rdes);
-    if(!session->data_to_write)
-        session->data_to_write=FD_ISSET(session->fd,&wdes);
-    *except=FD_ISSET(session->fd,&edes);
-    *write=session->data_to_write;
+
+    if (FD_ISSET(session->fd,&rdes) && can_read != NULL)
+		*can_read = 1;
+
+    if (FD_ISSET(session->fd,&wdes) && can_write != NULL)
+		*can_write = 1;
+
+    if(FD_ISSET(session->fd,&edes) && except != NULL )
+		*except=1;
+
     return session->data_to_read;
 }
 

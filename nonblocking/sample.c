@@ -27,8 +27,18 @@ clients must be made or how a client should react.
 #include <sys/ioctl.h>
 #include <signal.h>
 #include <errno.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
+#include <libssh/options.h>
+#include <libssh/auth.h>
+#include <libssh/connect.h>
+#include <libssh/client.h>
 
 #include <fcntl.h>
 
@@ -385,16 +395,89 @@ int main(int argc, char **argv){
     signal(SIGTERM,do_exit);
     if(user)
         ssh_options_set_username(options,user);
-    ssh_options_set_host(options,host);
+
+    ssh_options_set_remotehost(options,(u32)inet_addr(host));
     session=ssh_new();
     ssh_set_options(session,options);
     ssh_set_verbosity(10);
 
-    if(ssh_connect(session)){
+	ssh_retval retval;
+	retval = ssh_connect(session);
+    if( retval == SSH_ERROR )
+	{
         fprintf(stderr,"Connection failed : %s\n",ssh_get_error(session));
         ssh_disconnect(session);
         return 1;
-    }
+    }else
+	if ( retval == SSH_AGAIN )
+	{
+		printf("SAMPLE: got ssh_again, selecting\n");
+		fd_set rfds, wfds;
+		struct timeval timeout;
+		int maxfd;
+		int ret;
+		do
+		{
+			FD_ZERO(&rfds);
+			FD_ZERO(&wfds);
+
+            FD_SET(0,&rfds);
+			FD_SET(ssh_get_fd(session),&rfds);
+			if (ssh_want_write(session) == 1)
+			{
+				FD_SET(ssh_get_fd(session),&wfds);
+			}
+			
+
+			timeout.tv_sec=2;
+			timeout.tv_usec=0;
+
+
+			maxfd=ssh_get_fd(session)+1;
+			ret=select(maxfd,&rfds,&wfds,NULL,&timeout);
+
+			if ( ret==EINTR )
+			{
+				printf("SAMPLE: EINTR\n");
+			}
+				
+			if ( FD_ISSET(0,&rfds) )
+			{
+				char buffer[20];
+				/*int lus=*/ read(0,buffer,10);
+/*			if ( lus )
+					channel_write(channel,buffer,lus);
+				else
+				{
+					eof=1;
+					channel_send_eof(channel);
+				}
+*/				
+			}
+
+			if ( FD_ISSET(ssh_get_fd(session),&wfds) )
+			{
+				retval = ssh_again(session);
+			}
+			if ( FD_ISSET(ssh_get_fd(session),&rfds) )
+			{
+				retval = ssh_again(session);
+			}
+
+		} while ( retval == SSH_AGAIN );
+
+
+		if (retval == SSH_ERROR)
+		{
+			printf("SAMPLE: SSH_ERROR\n");
+			exit(0);
+		}else
+		if (retval == SSH_OK)
+		{
+			printf("SAMPLE: SSH_OK\n");
+		}
+
+	}
     state=ssh_is_server_known(session);
     switch(state){
         case SSH_SERVER_KNOWN_OK:
@@ -438,6 +521,10 @@ int main(int argc, char **argv){
 
     /* no ? you should :) */
     printf("DEBUG authing\n");
+	banner=NULL;
+	auth = SSH_AUTH_DENIED;
+	password=NULL;
+/*
     auth=ssh_userauth_autopubkey(session);
     if(auth==SSH_AUTH_ERROR){
         fprintf(stderr,"Authenticating with pubkey: %s\n",ssh_get_error(session));
@@ -448,6 +535,8 @@ int main(int argc, char **argv){
         printf("%s\n",banner);
         free(banner);
     }
+
+*/
     if(auth!=SSH_AUTH_SUCCESS){
         auth=auth_kbdint(session);
         if(auth==SSH_AUTH_ERROR){
@@ -456,6 +545,7 @@ int main(int argc, char **argv){
             return -1;
         }
     }
+/*
     if(auth!=SSH_AUTH_SUCCESS){
         password=getpass("Password : ");
         if(ssh_userauth_password(session,NULL,password) != SSH_AUTH_SUCCESS){
@@ -465,22 +555,25 @@ int main(int argc, char **argv){
         }
         memset(password,0,strlen(password));
     }
+*/	
     ssh_say(1,"Authentication success\n");
-    printf("%s\n",argv[0]);
+/*    printf("%s\n",argv[0]);
     if(strstr(argv[0],"sftp")){
         sftp=1;
         ssh_say(1,"doing sftp instead\n");
     }
     if(!sftp){
         if(!cmds[0])
+*/		
             shell(session);
-        else
+/*        else
             batch_shell(session);
     }
     else
         do_sftp(session);    
     if(!sftp && !cmds[0])
         do_cleanup();
+*/		
     ssh_disconnect(session);
 
     return 0;

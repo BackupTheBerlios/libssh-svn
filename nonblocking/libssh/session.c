@@ -29,6 +29,15 @@
 #include "libssh/libssh.h"
 #include "libssh/priv.h"
 #include "libssh/server.h"
+#include "libssh/wrapper.h"
+#include "libssh/messages.h"
+#include "libssh/keyfiles.h"
+#include "libssh/connect.h"
+#include "libssh/client.h"
+
+
+
+
 #define FIRST_CHANNEL 42 // why not ? it helps to find bugs.
 
 SSH_SESSION *ssh_new() {
@@ -38,6 +47,7 @@ SSH_SESSION *ssh_new() {
     session->maxchannel=FIRST_CHANNEL;
     session->fd=-1;
     session->blocking=1;
+	session->out_socket_buffer = NULL;
     return session;
 }
 
@@ -116,12 +126,13 @@ void ssh_set_fd_except(SSH_SESSION *session){
     session->data_except=1;
 }
 
+
 /* looks if there is data to read on the socket and parse it. */
 int ssh_handle_packets(SSH_SESSION *session){
     int w,err,r;
     do {
-        r=ssh_fd_poll(session,&w,&err);
-        if(r<=0)
+        r=ssh_fd_poll(session,&w,NULL,&err);	// FIXME BAD HACK -- common
+        if(w<=0)
             return r; // error or no data available
         /* if an exception happened, it will be trapped by packet_read() */
         if(packet_read(session)||packet_translate(session))

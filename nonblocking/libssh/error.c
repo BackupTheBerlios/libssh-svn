@@ -36,6 +36,7 @@ void ssh_set_error(void *error,int code,char *descr,...){
     vsnprintf(err->error_buffer,ERROR_BUFFERLEN,descr,va);
     va_end(va);
     err->error_code=code;
+	ssh_say(1,"\t%s\n",err->error_buffer);
 }
 
 char *ssh_get_error(void *error){

@@ -158,10 +158,7 @@ void hmac_final(HMACCTX ctx,unsigned char *hashmacbuf,unsigned int *len);
 
 
 
-typedef struct kex_struct {
-	unsigned char cookie[16];
-	char **methods;
-} KEX;
+
 
 
 
@@ -180,11 +177,23 @@ typedef enum
 	SSH_STATE_CONNECTING,			/* connecting the socket */
 	SSH_STATE_CONNECTED,			/* connected */
 	SSH_STATE_BANNER_RECEIVE, 		/* getting the remotes banner */
-	SSH_STATE_BANNER_SEND			/* send our banner */			
+	SSH_STATE_BANNER_SEND,			/* send our banner */			
+	SSH_STATE_BANNER_SENDING,		/* still send our banner */			
+	SSH_STATE_KEX_GET,				/* get the remote kex */
+	SSH_STATE_KEX_SEND,				/* get the remote kex */
+	SSH_STATE_KEX_SENDING,			/* get the remote kex */
+	SSH_STATE_DH_INIT_SEND,
+	SSH_STATE_DH_INIT_SENDING,
+	SSH_STATE_DH_INIT_READ,
+	SSH_STATE_DH_NEWKEYS_SEND,
+	SSH_STATE_DH_NEWKEYS_SENDING,
+	SSH_STATE_DH_NEWKEYS_READ,
+	SSH_STATE_DH_FINISHED
+
+
+
+
 } ssh_state_t;
-
-
-
 
 
 

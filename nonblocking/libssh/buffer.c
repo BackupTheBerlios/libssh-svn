@@ -25,6 +25,7 @@ MA 02111-1307, USA. */
 #include <netdb.h>
 #include "libssh/priv.h"
 #include "libssh/buffer.h"
+#include "libssh/errors.h"
 
 BUFFER *buffer_new(){
     BUFFER *buffer=malloc(sizeof(BUFFER));

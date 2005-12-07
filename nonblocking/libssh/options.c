@@ -179,7 +179,7 @@ void ssh_options_set_banner(SSH_OPTIONS *opt, char *banner){
 /* they all return 0 if all went well, 1 or !=0 if not. the most common error is unmatched algo (unimplemented) */
 /* don't forget other errors can happen if no matching algo is found in sshd answer */
 
-#warning ssh_options_get_supported_algos
+//#warning ssh_options_get_supported_algos
 
 int ssh_options_set_wanted_algos(SSH_OPTIONS *opt,int algo, char *list){
     if(algo > SSH_LANG_S_C || algo < 0){
@@ -389,8 +389,10 @@ int ssh_options_getopt(SSH_OPTIONS *options, int *argcptr, char **argv){
         ssh_options_set_username(options,user);
     if(cont && identity)
         ssh_options_set_identity(options,identity);
-    if(cont && localaddr)
-        ssh_options_set_bind(options,localaddr,0);
+
+//	if(cont && localaddr)
+//        ssh_options_set_bind(options,localaddr,0);		FIXME BAD HACK -- common
+
     ssh_options_set_port(options,port);
     //options->bindport=port;
     ssh_options_allow_ssh1(options,ssh1);

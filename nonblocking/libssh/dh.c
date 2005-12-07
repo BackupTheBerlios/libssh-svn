@@ -91,9 +91,13 @@ int ssh_get_random(void *where, int len, int strong){
 }
 
 /* it inits the values g and p which are used for DH key agreement */
-void ssh_crypto_init(){
+void ssh_crypto_init()
+{
+	logPF();
     static int init=0;
-    if(!init){
+    if(!init)
+	{
+		ssh_say(1,"running the init\n");
 #ifdef HAVE_LIBGCRYPT
         gcry_check_version(NULL);
 #endif
@@ -144,7 +148,9 @@ void ssh_print_hexa(char *descr,unsigned char *what, int len){
     printf("%.2hhx\n",what[i]);
 }
 
-void dh_generate_x(SSH_SESSION *session){
+void dh_generate_x(SSH_SESSION *session)
+{
+	logPF();
     session->next_crypto->x=bignum_new();
 #ifdef HAVE_LIBGCRYPT
     bignum_rand(session->next_crypto->x,128);
@@ -157,7 +163,9 @@ void dh_generate_x(SSH_SESSION *session){
 #endif
 }
 /* used by server */
-void dh_generate_y(SSH_SESSION *session){
+void dh_generate_y(SSH_SESSION *session)
+{
+	logPF();
     session->next_crypto->y=bignum_new();
 #ifdef HAVE_LIBGCRYPT
     bignum_rand(session->next_crypto->y,128);
@@ -170,7 +178,9 @@ void dh_generate_y(SSH_SESSION *session){
 #endif
 }
 /* used by server */
-void dh_generate_e(SSH_SESSION *session){
+void dh_generate_e(SSH_SESSION *session)
+{
+	logPF();
 #ifdef HAVE_LIBCRYPTO
     bignum_CTX ctx=bignum_ctx_new();
 #endif
@@ -178,6 +188,16 @@ void dh_generate_e(SSH_SESSION *session){
 #ifdef HAVE_LIBGCRYPT
     bignum_mod_exp(session->next_crypto->e,g,session->next_crypto->x,p);
 #elif defined HAVE_LIBCRYPTO
+	printf("\tsession->next_crypto->e %x\n"
+		   "\tg %x \n"
+		   "\tsession->next_crypto->x %x\n"
+		   "\tp %x\n"
+		   "\tctx%x\n",
+		   (unsigned int)session->next_crypto->e,
+		   (unsigned int)g,
+		   (unsigned int)session->next_crypto->x,
+		   (unsigned int)p,
+		   (unsigned int)ctx);
     bignum_mod_exp(session->next_crypto->e,g,session->next_crypto->x,p,ctx);
 #endif
 #ifdef DEBUG_CRYPTO
@@ -188,7 +208,9 @@ void dh_generate_e(SSH_SESSION *session){
 #endif
 }
 
-void dh_generate_f(SSH_SESSION *session){
+void dh_generate_f(SSH_SESSION *session)
+{
+	logPF();
 #ifdef HAVE_LIBCRYPTO
     bignum_CTX ctx=bignum_ctx_new();
 #endif
@@ -227,10 +249,12 @@ STRING *make_bignum_string(bignum num){
     return ptr;
 }
 
-bignum make_string_bn(STRING *string){
+bignum make_string_bn(STRING *string)
+{
+	logPF();
 	bignum bn;
 	unsigned int len=string_len(string);
-	ssh_say(3,"Importing a %d bits,%d bytes object ...\n",len*8,len);
+	ssh_say(3,"\tImporting a %d bits,%d bytes object ...\n",len*8,len);
 #ifdef HAVE_LIBGCRYPT
         bignum_bin2bn(string->string,len,&bn);
 #elif defined HAVE_LIBCRYPTO
@@ -239,20 +263,28 @@ bignum make_string_bn(STRING *string){
 	return bn;
 }
 
-STRING *dh_get_e(SSH_SESSION *session){
+STRING *dh_get_e(SSH_SESSION *session)
+{
+	logPF();
 	return make_bignum_string(session->next_crypto->e);
 }
 
 /* used by server */
 
-STRING *dh_get_f(SSH_SESSION *session){
+STRING *dh_get_f(SSH_SESSION *session)
+{
+	logPF();
     return make_bignum_string(session->next_crypto->f);
 }
-void dh_import_pubkey(SSH_SESSION *session,STRING *pubkey_string){
+void dh_import_pubkey(SSH_SESSION *session,STRING *pubkey_string)
+{
+	logPF();
     session->next_crypto->server_pubkey=pubkey_string;
 }
 
-void dh_import_f(SSH_SESSION *session,STRING *f_string){
+void dh_import_f(SSH_SESSION *session,STRING *f_string)
+{
+	logPF();
     session->next_crypto->f=make_string_bn(f_string);
 #ifdef DEBUG_CRYPTO
     ssh_print_bignum("f",session->next_crypto->f);
@@ -260,14 +292,18 @@ void dh_import_f(SSH_SESSION *session,STRING *f_string){
 }
 
 /* used by the server implementation */
-void dh_import_e(SSH_SESSION *session, STRING *e_string){
+void dh_import_e(SSH_SESSION *session, STRING *e_string)
+{
+	logPF();
     session->next_crypto->e=make_string_bn(e_string);
 #ifdef DEBUG_CRYPTO
     ssh_print_bignum("e",session->next_crypto->e);
 #endif
 }
 
-void dh_build_k(SSH_SESSION *session){
+void dh_build_k(SSH_SESSION *session)
+{
+	logPF();
 #ifdef HAVE_LIBCRYPTO
     bignum_CTX ctx=bignum_ctx_new();
 #endif
@@ -301,7 +337,10 @@ static void sha_add(STRING *str,SHACTX ctx){
 #endif
 }
 */
-void make_sessionid(SSH_SESSION *session){
+void make_sessionid(SSH_SESSION *session)
+{
+	logPF();
+
     SHACTX ctx;
     STRING *num,*str;
     BUFFER *server_hash, *client_hash;
@@ -309,11 +348,13 @@ void make_sessionid(SSH_SESSION *session){
     u32 len;
     ctx=sha1_init();
 
+	ssh_say(1,"\t clientbanner %s\n",session->clientbanner);
     str=string_from_char(session->clientbanner);
     buffer_add_ssh_string(buf,str);
     //sha_add(str,ctx);
     free(str);
 
+	ssh_say(1,"\t serverbanner %s\n",session->serverbanner);
     str=string_from_char(session->serverbanner);
     buffer_add_ssh_string(buf,str);
     //sha_add(str,ctx);
@@ -403,7 +444,10 @@ static void generate_one_key(STRING *k,unsigned char session_id[SHA_DIGEST_LEN],
     sha1_final(output,ctx);
 }
 
-void generate_session_keys(SSH_SESSION *session){
+void generate_session_keys(SSH_SESSION *session)
+{
+	logPF();
+
     STRING *k_string;
     SHACTX ctx;
     k_string=make_bignum_string(session->next_crypto->k);
@@ -459,7 +503,9 @@ void generate_session_keys(SSH_SESSION *session){
     free(k_string);
 }
 
-int ssh_get_pubkey_hash(SSH_SESSION *session,unsigned char hash[MD5_DIGEST_LEN]){
+int ssh_get_pubkey_hash(SSH_SESSION *session,unsigned char hash[MD5_DIGEST_LEN])
+{
+	logPF();
     STRING *pubkey=session->current_crypto->server_pubkey;
     MD5CTX ctx;
     int len=string_len(pubkey);
@@ -470,11 +516,15 @@ int ssh_get_pubkey_hash(SSH_SESSION *session,unsigned char hash[MD5_DIGEST_LEN])
     return MD5_DIGEST_LEN;
 }
 
-int pubkey_get_hash(SSH_SESSION *session, unsigned char hash[MD5_DIGEST_LEN]){
+int pubkey_get_hash(SSH_SESSION *session, unsigned char hash[MD5_DIGEST_LEN])
+{
+	logPF();
     return ssh_get_pubkey_hash(session,hash);
 }
 
-STRING *ssh_get_pubkey(SSH_SESSION *session){
+STRING *ssh_get_pubkey(SSH_SESSION *session)
+{
+	logPF();
     return string_copy(session->current_crypto->server_pubkey);
 }
 
@@ -503,8 +553,9 @@ static int match(char *group,char *object){
     return 1;
 }
 
-static int sig_verify(SSH_SESSION *session, PUBLIC_KEY *pubkey, SIGNATURE *signature, 
-        unsigned char *digest){
+static int sig_verify(SSH_SESSION *session, PUBLIC_KEY *pubkey, SIGNATURE *signature, unsigned char *digest)
+{
+	logPF();
 #ifdef HAVE_LIBGCRYPT
     gcry_error_t valid=0;
     gcry_sexp_t gcryhash;
@@ -569,7 +620,10 @@ return -1;
 }
 
     
-int signature_verify(SSH_SESSION *session,STRING *signature){
+int signature_verify(SSH_SESSION *session,STRING *signature)
+{
+	logPF();
+
     PUBLIC_KEY *pubkey;
     SIGNATURE *sign;
     int err;

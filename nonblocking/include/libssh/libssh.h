@@ -84,9 +84,9 @@ typedef struct ssh_kbdint SSH_KBDINT;
 /* error return codes */
 typedef enum
 {
-	SSH_OK,     /* No error */
-	SSH_ERROR, 	/* error of some kind */
-	SSH_AGAIN,  /* the nonblocking call must be repeated */
+	SSH_ERROR=-1, 	/* error of some kind */
+	SSH_OK=0,     /* No error */
+	SSH_AGAIN=1,  /* the nonblocking call must be repeated */
 }ssh_retval;
 
 

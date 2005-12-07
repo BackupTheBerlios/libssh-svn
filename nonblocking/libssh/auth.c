@@ -32,6 +32,8 @@ MA 02111-1307, USA. */
 #include "libssh/string.h"
 #include "libssh/keys.h"
 #include "libssh/session.h"
+#include "libssh/client.h"
+#include "libssh/keyfiles.h"
 
 static int ask_userauth(SSH_SESSION *session)
 {

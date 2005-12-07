@@ -35,6 +35,9 @@ MA 02111-1307, USA. */
 #include "libssh/errors.h"
 #include "libssh/session.h"
 
+#include "libssh/gzip.h"
+#include "libssh/connect.h"
+
 /* XXX include selected mac size */
 static int macsize=SHA_DIGEST_LEN;
 
@@ -162,7 +165,8 @@ static int packet_read2(SSH_SESSION *session)
 
 #ifdef HAVE_SSH1
 /* a slighty modified packet_read2() for SSH-1 protocol */
-static int packet_read1(SSH_SESSION *session){
+static int packet_read1(SSH_SESSION *session)
+{
     u32 len;
     void *packet=NULL;
     int ret;
@@ -298,8 +302,8 @@ int packet_flush(SSH_SESSION *session)
 	int ret=SSH_OK;
 	int except, can_write;
 	int w;
-	ssh_fd_poll(session,&can_write,&except); /* internally sets data_to_write */
-	if ( session->data_to_write && buffer_get_rest_len(session->out_socket_buffer)>0 )
+	ssh_fd_poll(session,&can_write,NULL,&except); /* internally sets data_to_write */
+	if ( can_write && buffer_get_rest_len(session->out_socket_buffer)>0 )
 	{
 		w=send(session->fd,buffer_get_rest(session->out_socket_buffer),buffer_get_rest_len(session->out_socket_buffer),0);//MSG_NOPIPE);
 		if ( w<0 )

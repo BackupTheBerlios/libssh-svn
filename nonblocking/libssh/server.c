@@ -38,6 +38,8 @@ MA 02111-1307, USA. */
 #include "libssh/keyfiles.h"
 #include "libssh/dh.h"
 #include "libssh/crypto.h"
+#include "libssh/wrapper.h"
+#include "libssh/client.h"
 
 static int bind_socket(SSH_BIND *ssh_bind,char *hostname, int port) {
     struct sockaddr_in myaddr;
@@ -265,9 +267,9 @@ static int dh_handshake_server(SSH_SESSION *session){
 }
 /* do the banner and key exchange */
 int ssh_accept(SSH_SESSION *session){
-    ssh_send_banner(session,1);
+//    ssh_send_banner(session,1);		FIXME BAD HACK -- common
     ssh_crypto_init();
-    session->clientbanner=ssh_get_banner(session);
+//    session->clientbanner=ssh_banner_get(session);FIXME BAD HACK -- common
     server_set_kex(session);
     ssh_send_kex(session,1);
     if(ssh_get_kex(session,1))

@@ -19,6 +19,8 @@ along with the SSH Library; see the file COPYING.  If not, write to
 the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
 MA 02111-1307, USA. */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -31,6 +33,8 @@ MA 02111-1307, USA. */
 #include <arpa/inet.h>
 #include <fcntl.h>
 
+#include "libssh/client.h"
+
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 #include "libssh/session.h"
@@ -39,36 +43,21 @@ MA 02111-1307, USA. */
 
 #include "libssh/wrapper.h"
 
+#include "libssh/socket.h"
+
 extern int connections;
 
 #define set_status(opt,status) do {\
         if (opt->connect_status_function) \
             opt->connect_status_function(opt->connect_status_arg, status); \
     } while (0)
-/* simply gets a banner from a socket */
 
-char *ssh_get_banner(SSH_SESSION *session){
-    char buffer[128];
-    int i = 0;
-    while (i < 127) {
-        if(read(session->fd, &buffer[i], 1)<=0){
-            ssh_set_error(session,SSH_FATAL,"Remote host closed connection");
-            return NULL;
-        }
-        if (buffer[i] == '\r')
-            buffer[i] = 0;
-        if (buffer[i] == '\n') {
-            buffer[i] = 0;
-            return strdup(buffer);
-        }
-    i++;
-    }
-    ssh_set_error(session,SSH_FATAL,"Too large banner");
-    return NULL;
-}
 
-int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2)
+
+ssh_retval ssh_banner_analyze(SSH_SESSION *session, int *ssh1, int *ssh2)
 {
+	logPF();
+
     char *banner=session->serverbanner;
     if(strncmp(banner,"SSH-",4)!=0){
         ssh_set_error(session,SSH_FATAL,"Protocol mismatch: %s",banner);
@@ -98,41 +87,18 @@ int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2)
     return 0;
 }
 
-/* ssh_send_banner sends a SSH banner to the server */
-/* TODO select a banner compatible with server version */
-/* switch SSH1/1.5/2 */
-/* and quit when the server is SSH1 only */
 
-int ssh_send_banner(SSH_SESSION *session,int server)
-{
-	char *banner;
-	char buffer[128];
-	banner=session->version==1?CLIENTBANNER1:CLIENTBANNER2;
-	if ( session->options->banner )
-		banner=session->options->banner;
-	if ( server )
-		session->serverbanner=strdup(banner);
-	else
-		session->clientbanner=strdup(banner);
-	snprintf(buffer,128,"%s\r\n",banner);
-	write(session->fd,buffer,strlen(buffer));
-	return 0;
-}
 
-#define DH_STATE_INIT 0
-#define DH_STATE_INIT_TO_SEND 1
-#define DH_STATE_INIT_SENT 2
-#define DH_STATE_NEWKEYS_TO_SEND 3
-#define DH_STATE_NEWKEYS_SENT 4
-#define DH_STATE_FINISHED 5
-static int dh_handshake(SSH_SESSION *session)
+int dh_handshake(SSH_SESSION *session)
 {
 	logPF();
+	ssh_say(1,"\tstate %i\n",session->state);
 
-    STRING *e,*f,*pubkey,*signature;
-    int ret;
-    switch(session->dh_handshake_state){
-        case DH_STATE_INIT:
+    STRING *e,*f,*pubkey,*signature=NULL;
+    ssh_retval ret;
+    switch(session->state)
+	{
+        case SSH_STATE_DH_INIT_SEND:
             packet_clear_out(session);
             buffer_add_u8(session->out_buffer,SSH2_MSG_KEXDH_INIT);
             dh_generate_x(session);
@@ -140,24 +106,28 @@ static int dh_handshake(SSH_SESSION *session)
             e=dh_get_e(session);
             buffer_add_ssh_string(session->out_buffer,e);
             ret=packet_send(session);
-            free(e);
-            session->dh_handshake_state=DH_STATE_INIT_TO_SEND;
-            if(ret==SSH_ERROR)
-                return ret;
-        case DH_STATE_INIT_TO_SEND:
+
+            return ret;
+			break;
+
+        case SSH_STATE_DH_INIT_SENDING:
             ret=packet_flush(session);	// FIXME BLOCKING
-            if(ret!=SSH_OK)
-                return ret; // SSH_ERROR or SSH_AGAIN
-            session->dh_handshake_state=DH_STATE_INIT_SENT;
-        case DH_STATE_INIT_SENT:
+            return ret; // SSH_ERROR or SSH_AGAIN
+
+//			session->dh_handshake_state=SSH_STATE_DH_INIT_SENT;
+
+        case SSH_STATE_DH_INIT_READ:
             ret=packet_wait(session,SSH2_MSG_KEXDH_REPLY);// FIXME BLOCKING
             if(ret != SSH_OK)
                 return ret;
-            pubkey=buffer_get_ssh_string(session->in_buffer);
-            if(!pubkey){
+
+			pubkey=buffer_get_ssh_string(session->in_buffer);
+            if(!pubkey)
+			{
                 ssh_set_error(session,SSH_FATAL,"No public key in packet");
                 return SSH_ERROR;
             }
+
             dh_import_pubkey(session,pubkey);
             f=buffer_get_ssh_string(session->in_buffer);
             if(!f){
@@ -166,24 +136,40 @@ static int dh_handshake(SSH_SESSION *session)
             }
             dh_import_f(session,f);
             free(f);
+
             if(!(signature=buffer_get_ssh_string(session->in_buffer))){
                 ssh_set_error(session,SSH_FATAL,"No signature in packet");
                 return SSH_ERROR;
             }
-            session->dh_server_signature=signature;
-            dh_build_k(session);
+
+			session->dh_server_signature=signature;
+			dh_build_k(session);
+			return SSH_OK;
+
+		case SSH_STATE_DH_NEWKEYS_SEND:
+            
             // send the MSG_NEWKEYS
             packet_clear_out(session);
             buffer_add_u8(session->out_buffer,SSH2_MSG_NEWKEYS);
-            packet_send(session);
-            session->dh_handshake_state=DH_STATE_NEWKEYS_TO_SEND;
-        case DH_STATE_NEWKEYS_TO_SEND:
-            ret=packet_flush(session);// FIXME BLOCKING
-            if(ret != SSH_OK)
-                return ret;
-            ssh_say(2,"SSH_MSG_NEWKEYS sent\n");
-            session->dh_handshake_state=DH_STATE_NEWKEYS_SENT;
-        case DH_STATE_NEWKEYS_SENT:
+            return packet_send(session);
+//            session->dh_handshake_state=SSH_STATE_DH_NEWKEYS_TO_SEND;
+			
+
+	case SSH_STATE_DH_NEWKEYS_SENDING:
+		ssh_say(1,"\tcase PRE SSH_STATE_DH_NEWKEYS_SENDING:\n");
+            ret = packet_flush(session);
+			ssh_say(1,"\tcase POST SSH_STATE_DH_NEWKEYS_SENDING:\n");
+			if (ret == SSH_OK )
+			{
+				ssh_say(2,"SSH_MSG_NEWKEYS sent\n");
+			}
+			
+			return ret;
+			
+			break;
+
+	case SSH_STATE_DH_NEWKEYS_READ:
+		ssh_say(1,"\tcase SSH_STATE_DH_NEWKEYS_READ:\n");
             ret=packet_wait(session,SSH2_MSG_NEWKEYS);// FIXME BLOCKING
             if(ret != SSH_OK)
                 return ret;
@@ -192,12 +178,18 @@ static int dh_handshake(SSH_SESSION *session)
             /* set the cryptographic functions for the next crypto */
             /* (it is needed for generate_session_keys for key lenghts) */
             if(crypt_set_algorithms(session))
-                return SSH_ERROR;
+			{
+				printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n");
+				return SSH_ERROR;
+			}
+
             generate_session_keys(session);
             /* verify the host's signature. XXX do it sooner */
             signature=session->dh_server_signature;
             session->dh_server_signature=NULL;
-            if(signature_verify(session,signature)){
+            if(signature_verify(session,signature))
+			{
+				ssh_say(1,"\t signature is broken\n");
                 free(signature);
                 return SSH_ERROR;
             }
@@ -208,10 +200,10 @@ static int dh_handshake(SSH_SESSION *session)
                 /* XXX later, include a function to change keys */
             session->current_crypto=session->next_crypto;
             session->next_crypto=crypto_new();
-            session->dh_handshake_state=DH_STATE_FINISHED;
+//            session->dh_handshake_state=SSH_STATE_DH_FINISHED;
             return SSH_OK;
         default:
-            ssh_set_error(session,SSH_FATAL,"Invalid state in dh_handshake():%d",session->dh_handshake_state);
+            ssh_set_error(session,SSH_FATAL,"Invalid state in dh_handshake():%d",session->state);
             return SSH_ERROR;
     }
     /* not reached */
@@ -251,7 +243,7 @@ ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
 	{
 	case SSH_STATE_NONE:
 		{
-            session->fd ==socket(AF_INET, SOCK_STREAM, 0);
+            session->fd = socket(AF_INET, SOCK_STREAM, 0);
 			if ( session->fd <= 0 )
 			{
 				ssh_set_error(session,SSH_FATAL,"socket : %s",strerror(errno));
@@ -262,7 +254,7 @@ ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
 			addrBind.sin_family = AF_INET;
 
 			addrBind.sin_addr.s_addr 	= session->options->localhost;
-			addrBind.sin_port 			= htons(session->options->localport);
+			addrBind.sin_port 			= 0;//htons(session->options->localport);
 
 			if ( bind(session->fd, (struct sockaddr *) &addrBind, sizeof(addrBind)) < 0 )
 			{
@@ -308,7 +300,7 @@ ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
 			}
 
 		}
-		break;
+        break;
 
 	case SSH_STATE_CONNECTING:
 		{
@@ -360,30 +352,40 @@ ssh_retval ssh_connect_nonblocking(SSH_SESSION *session)
  */
 ssh_retval ssh_banner_get_nonblocking(SSH_SESSION *session)
 {
+	logPF();
+
 	ssh_retval retval = SSH_AGAIN;
 
-	if ( socket_read(session,256) == SSH_ERROR )
+	if ( socket_read(session,2560) == SSH_ERROR )
 		return SSH_ERROR;
 
 	int len = buffer_get_rest_len(session->in_socket_buffer);
 	char *c = (char *)buffer_get(session->in_socket_buffer);
 
-	if (*(c + len) == '\n' && *(c + len -1) == '\r' )
+	ssh_say(1,"\t banner size %i\n\"%.*s\"\n\n",len,len,c);
+
+
+	int i;
+	for (i=0;i<len;i++)
 	{
-		ssh_say(1,"found banner\n%s\n",c);
-		retval = SSH_OK;
+		if ((c[i] == '\n' || c[i] == '\r') && i > 2)
+		{
+			ssh_say(1,"found banner\n%s\n",c);
+			session->serverbanner = strndup(c,i);
+			buffer_reinit(session->in_socket_buffer);
+			retval = SSH_OK;
+		}
 	}
 	return retval;
 	
 }
 
 
-
 ssh_retval ssh_banner_get(SSH_SESSION *session)
 {
 	if (session->options->blocking == 1)
 	{
-
+		return SSH_ERROR;
 	}else
 	{
 		return ssh_banner_get_nonblocking(session);
@@ -392,10 +394,62 @@ ssh_retval ssh_banner_get(SSH_SESSION *session)
 
 
 
-ssh_retval ssh_again(SSH_SESSION *session)
+ssh_retval ssh_banner_send_nonblocking(SSH_SESSION *session)
 {
 	ssh_retval retval;
 
+	switch ( session->state )
+	{
+	case SSH_STATE_BANNER_SEND:
+		{
+			
+			char *banner;
+			banner=session->version==1?CLIENTBANNER1:CLIENTBANNER2;
+			char buffer[128];
+			banner=session->version==1?CLIENTBANNER1:CLIENTBANNER2;
+			if ( session->options->banner )
+				banner=session->options->banner;
+
+			session->clientbanner=strdup(banner);
+			snprintf(buffer,128,"%s\r\n",banner);
+    
+
+			if(session->out_socket_buffer == NULL)
+				session->out_socket_buffer = buffer_new();
+			buffer_add_data(session->out_socket_buffer,buffer,strlen(buffer));
+			retval = packet_flush(session);
+		}
+	case SSH_STATE_BANNER_SENDING:
+		retval = packet_flush(session);
+		break;
+
+	default:
+		retval = SSH_ERROR;
+	}
+
+
+	return retval;
+}
+
+ssh_retval ssh_banner_send(SSH_SESSION *session)
+{
+	logPF();
+	if (session->options->blocking == 1)
+	{
+		return SSH_ERROR;
+	}else
+	{
+		return ssh_banner_send_nonblocking(session);
+	}
+}
+
+ssh_retval ssh_again(SSH_SESSION *session)
+{
+	logPF();
+	ssh_say(1,"\twe are in state %i\n",session->state);
+
+	ssh_retval retval = SSH_AGAIN;
+	ssh_retval fnret;
 	switch (session->state)
 	{
 
@@ -411,18 +465,181 @@ ssh_retval ssh_again(SSH_SESSION *session)
 	case SSH_STATE_CONNECTED:
 		/* here we call the connect callback */
 		session->state = SSH_STATE_BANNER_RECEIVE;
+		session->alive = 1;
 		break;
 
 	case SSH_STATE_BANNER_RECEIVE:
 		if (ssh_banner_get(session) == SSH_OK )
 		{
-			//
+			session->state = SSH_STATE_BANNER_SEND;
+			int ssh1, ssh2;
+			if (ssh_banner_analyze(session,&ssh1,&ssh2) == SSH_ERROR)
+			{
+				retval = SSH_ERROR;
+			}else
+			{
+				session->version = 2;
+			}
+		}
+//		break;
+
+	case SSH_STATE_BANNER_SEND:
+	case SSH_STATE_BANNER_SENDING:
+		{
+			fnret = ssh_banner_send(session);
+			switch ( fnret )
+			{
+			case SSH_OK:
+				session->state = SSH_STATE_KEX_GET;
+				break;
+			case SSH_AGAIN:
+				session->state = SSH_STATE_BANNER_SENDING;
+				break;
+			case SSH_ERROR:
+				retval = SSH_ERROR;
+				break;
+			}
 		}
 		break;
 
-	case SSH_STATE_BANNER_SEND:
+	case SSH_STATE_KEX_GET:
+		{
+			fnret = ssh_get_kex(session,0);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				ssh_say(1,"\t ssh_get_kex finished\n");
+				session->state = SSH_STATE_KEX_SEND;
+				ssh_list_kex(&session->server_kex);
+				set_kex(session);
+				break;
+			}
+		}
+		
+	case SSH_STATE_KEX_SEND:
+	case SSH_STATE_KEX_SENDING:
+		{
+			fnret = ssh_send_kex(session,0);
+			switch ( fnret )
+			{
+			case SSH_ERROR:
+				return SSH_ERROR;
+				break;
+
+			case SSH_AGAIN:
+				return SSH_AGAIN;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_DH_INIT_SEND;
+				break;
+
+			}
+		}
+
+	case SSH_STATE_DH_INIT_SENDING:
+	case SSH_STATE_DH_INIT_SEND:
+		{
+			ssh_say(1,"case SSH_STATE_DH_INIT_SEND:\n");
+			fnret = dh_handshake(session);
+			switch (fnret)
+			{
+			case SSH_OK:
+				session->state = SSH_STATE_DH_INIT_READ;
+				break;
+
+			case SSH_AGAIN:
+				session->state = SSH_STATE_DH_INIT_SENDING;
+				break;
+
+			case SSH_ERROR:
+				return SSH_ERROR;
+			}
+
+
+		}
+	
+	case SSH_STATE_DH_INIT_READ:
+		{
+			ssh_say(1,"case SSH_STATE_DH_INIT_READ:\n");
+			fnret = dh_handshake(session);
+			switch (fnret)
+			{
+			case SSH_AGAIN:
+				return SSH_AGAIN;
+				break;
+
+			case SSH_ERROR:
+				return SSH_ERROR;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_DH_NEWKEYS_SEND;
+				break;
+
+			}
+		}
+
+	case SSH_STATE_DH_NEWKEYS_SENDING:
+	case SSH_STATE_DH_NEWKEYS_SEND:
+		{
+			ssh_say(1,"\t case SSH_STATE_DH_NEWKEYS_SEND: %i\n", session->state);
+			fnret = dh_handshake(session);
+			switch (fnret)
+			{
+			case SSH_OK:
+				ssh_say(1,"\tSSH_STATE_DH_NEWKEYS_SEND -> SSH_OK %i\n",session->state);
+				session->state = SSH_STATE_DH_NEWKEYS_READ;
+//				return SSH_AGAIN;
+				break;
+
+			case SSH_AGAIN:
+				ssh_say(1,"\tSSH_STATE_DH_NEWKEYS_SEND -> SSH_AGAIN %i\n",session->state);
+				session->state = SSH_STATE_DH_NEWKEYS_SENDING;
+				return SSH_AGAIN;
+				break;
+
+			case SSH_ERROR:
+				ssh_say(1,"\tSSH_STATE_DH_NEWKEYS_SEND -> SSH_ERROR %i\n",session->state);
+				return SSH_ERROR;
+			}
+		}
+
+
+
+	case SSH_STATE_DH_NEWKEYS_READ:
+		{
+			ssh_say(1,"\t case SSH_STATE_DH_NEWKEYS_READ: %i\n",session->state);
+			fnret = dh_handshake(session);
+			switch (fnret)
+			{
+			case SSH_OK:
+				session->state = SSH_STATE_DH_FINISHED;
+				break;
+
+			case SSH_AGAIN:
+				return SSH_AGAIN;
+				break;
+
+			case SSH_ERROR:
+				return SSH_ERROR;
+				break;
+			}
+		}
+
+
+
+	case SSH_STATE_DH_FINISHED:
+		ssh_say(1,"\t case SSH_STATE_DH_FINISHED:\n");
+		return SSH_OK;
 		break;
 	}
+	return retval;
 }
 
 
@@ -434,13 +651,18 @@ ssh_retval ssh_again(SSH_SESSION *session)
  * 
  * @return returns 1 if the session has things to send, else 0
  */
-int ssh_want_send(SSH_SESSION *session) 
+int ssh_want_write(SSH_SESSION *session) 
 {
-	if (buffer_get_rest_len(session->out_socket_buffer) > 0 )
+	logPF();
+	ssh_say(1,"\tstate is %i\n",session->state);
+
+	if (session->out_socket_buffer && buffer_get_rest_len(session->out_socket_buffer) > 0 )
 	{
+		ssh_say(1,"\twe want to write\n");
 		return 1;
 	}else
 	{
+		ssh_say(1,"\twe dont need to write\n");
 		return 0;
 	}
 }
@@ -449,15 +671,37 @@ int ssh_want_send(SSH_SESSION *session)
 
 
 
-int ssh_connect(SSH_SESSION *session)
+ssh_retval ssh_connect(SSH_SESSION *session)
 {
-	if(session->options->blocking)
+	logPF();
+	
+	session->client=1;
+
+	ssh_crypto_init();
+	if(session->options->blocking == 1 )
 	{
-		
+		ssh_say(1,"Blocking connect ...\n");
+		return SSH_ERROR;
 	}else
 	{
-		return ssh_connect_nonblocking(session);
+		ssh_retval retval =  ssh_connect_nonblocking(session);
+		switch (retval)
+		{
+		case SSH_OK:
+			session->state = SSH_STATE_CONNECTED;
+			break;
+
+		case SSH_AGAIN:
+			session->state = SSH_STATE_CONNECTING;
+			break;
+
+		case SSH_ERROR:
+			session->state = SSH_STATE_NONE;
+			break;
+		}
+
 	}
+	return SSH_AGAIN;
 }
 
 char *ssh_get_issue_banner(SSH_SESSION *session){

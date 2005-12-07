@@ -71,7 +71,7 @@ static int channel_open(CHANNEL *channel,char *type_c,int window,
     SSH_SESSION *session=channel->session;
     STRING *type=string_from_char(type_c);
     u32 foo;
-    int err;
+//    int err;
     packet_clear_out(session);
     buffer_add_u8(session->out_buffer,SSH2_MSG_CHANNEL_OPEN);
     channel->local_channel=ssh_channel_new_id(session);
