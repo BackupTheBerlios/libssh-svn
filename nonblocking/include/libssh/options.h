@@ -47,14 +47,15 @@ int ssh_options_set_wanted_algos(SSH_OPTIONS *opt,int algo, char *list);
 void ssh_options_set_username(SSH_OPTIONS *opt,char *username);
 void ssh_options_set_port(SSH_OPTIONS *opt, unsigned int port);
 int ssh_options_getopt(SSH_OPTIONS *options, int *argcptr, char **argv);
-void ssh_options_set_host(SSH_OPTIONS *opt, const char *host);
+
+void ssh_options_set_remotehost(SSH_OPTIONS *opt, u32 host);
+
 void ssh_options_set_fd(SSH_OPTIONS *opt, int fd);
 
 void ssh_options_set_bind(SSH_OPTIONS *opt, u32 localhost ,int port);
 
 void ssh_options_set_identity(SSH_OPTIONS *opt, char *identity);
-void ssh_options_set_status_callback(SSH_OPTIONS *opt, void (*callback)
-        (void *arg, float status), void *arg);
+void ssh_options_set_status_callback(SSH_OPTIONS *opt, void (*callback)(void *arg, float status), void *arg);
 void ssh_options_set_timeout(SSH_OPTIONS *opt, long seconds, long usec);
 void ssh_options_set_ssh_dir(SSH_OPTIONS *opt, char *dir);
 void ssh_options_set_known_hosts_file(SSH_OPTIONS *opt, char *dir);
