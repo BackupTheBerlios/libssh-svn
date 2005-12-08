@@ -333,7 +333,7 @@ int packet_flush(SSH_SESSION *session)
 		} else
 		{
 			buffer_pass_bytes(session->out_socket_buffer,w);
-			if ( w < buffer_get_rest_len(session->out_socket_buffer) )
+			if ( buffer_get_rest_len(session->out_socket_buffer) > 0 )
 			{
 				ret = SSH_AGAIN;
 			} else
@@ -543,9 +543,10 @@ static int packet_wait1(SSH_SESSION *session,int type)
 #endif /* HAVE_SSH1 */
 
 
-static int packet_wait2(SSH_SESSION *session,int type)
+ssh_retval packet_wait2(SSH_SESSION *session,int type)
 {
-	int ret;
+	logPF();
+	ssh_retval ret;
 	while ( 1 )
 	{
 		ret=packet_read2(session);
@@ -560,6 +561,7 @@ static int packet_wait2(SSH_SESSION *session,int type)
 		switch ( session->in_packet.type )
 		{
 		case SSH2_MSG_DISCONNECT:
+			ssh_say(1,"\t got SSH2_MSG_DISCONNECT\n");
 			packet_parse(session);
 			return SSH_ERROR;
 		case SSH2_MSG_CHANNEL_WINDOW_ADJUST:
@@ -581,11 +583,13 @@ static int packet_wait2(SSH_SESSION *session,int type)
 			return SSH_OK;
 		}
 	}
+	ssh_say(1,"\tpacket_wait2 returning %i\n",SSH_OK);
 	return SSH_OK;
 }
 
 int packet_wait(SSH_SESSION *session, int type)
 {
+	logPF();
 #ifdef HAVE_SSH1
 	if ( session->version==1 )
 		return packet_wait1(session,type);

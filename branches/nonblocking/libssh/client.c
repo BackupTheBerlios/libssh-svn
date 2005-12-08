@@ -357,8 +357,16 @@ ssh_retval ssh_banner_get_nonblocking(SSH_SESSION *session)
 
 	ssh_retval retval = SSH_AGAIN;
 
-	if ( socket_read(session,2560) == SSH_ERROR )
-		return SSH_ERROR;
+	retval = socket_read(session,2560);
+
+	ssh_say(1,"sh_banner_get_nonblocking socket_read %i\n",retval);
+
+	if (retval == SSH_ERROR || session->in_socket_buffer == NULL)
+	{
+		return retval;
+	}
+
+	retval = SSH_AGAIN; 
 
 	int len = buffer_get_rest_len(session->in_socket_buffer);
 	char *c = (char *)buffer_get(session->in_socket_buffer);
@@ -468,6 +476,9 @@ ssh_retval ssh_again(SSH_SESSION *session)
 			case SSH_ERROR:
 				return retval;
 				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
 			}
 		}
 
@@ -478,18 +489,33 @@ ssh_retval ssh_again(SSH_SESSION *session)
 
 
 	case SSH_STATE_BANNER_RECEIVE:
-		if (ssh_banner_get(session) == SSH_OK )
 		{
-			session->state = SSH_STATE_BANNER_SEND;
-			int ssh1, ssh2;
-			if (ssh_banner_analyze(session,&ssh1,&ssh2) == SSH_ERROR)
-			{
-				retval = SSH_ERROR;
-			}else
-			{
-				session->version = 2;
-			}
+			fnret = ssh_banner_get(session);
+				switch ( fnret )
+				{
+				case SSH_OK:
+					session->state = SSH_STATE_BANNER_SEND;
+					int ssh1, ssh2;
+					if ( ssh_banner_analyze(session,&ssh1,&ssh2) == SSH_ERROR )
+					{
+						retval = SSH_ERROR;
+					} else
+					{
+						session->version = 2;
+					}
+					break;
+				case SSH_ERROR:
+				case SSH_AGAIN:
+					return fnret;
+					break;
+
+				default:
+					ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+				}
 		}
+
+				
 //		break;
 
 	case SSH_STATE_BANNER_SEND:
@@ -502,12 +528,14 @@ ssh_retval ssh_again(SSH_SESSION *session)
 				session->state = SSH_STATE_KEX_GET;
 				break;
 			case SSH_AGAIN:
-				session->state = SSH_STATE_BANNER_SENDING;
 				return SSH_AGAIN;
-				break;
 			case SSH_ERROR:
 				return SSH_ERROR;
 				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 		}
 		
@@ -528,6 +556,10 @@ ssh_retval ssh_again(SSH_SESSION *session)
 				ssh_list_kex(&session->server_kex);
 				set_kex(session);
 				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 		}
 		
@@ -549,6 +581,9 @@ ssh_retval ssh_again(SSH_SESSION *session)
 				session->state = SSH_STATE_DH_INIT_SEND;
 				break;
 
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 		}
 
@@ -569,6 +604,10 @@ ssh_retval ssh_again(SSH_SESSION *session)
 
 			case SSH_ERROR:
 				return SSH_ERROR;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 
 
@@ -591,6 +630,9 @@ ssh_retval ssh_again(SSH_SESSION *session)
 			case SSH_OK:
 				session->state = SSH_STATE_DH_NEWKEYS_SEND;
 				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
 
 			}
 		}
@@ -617,6 +659,10 @@ ssh_retval ssh_again(SSH_SESSION *session)
 			case SSH_ERROR:
 				ssh_say(1,"\tSSH_STATE_DH_NEWKEYS_SEND -> SSH_ERROR %i\n",session->state);
 				return SSH_ERROR;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 		}
 
@@ -639,15 +685,313 @@ ssh_retval ssh_again(SSH_SESSION *session)
 			case SSH_ERROR:
 				return SSH_ERROR;
 				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
 			}
 		}
-
-
 
 	case SSH_STATE_DH_FINISHED:
 		ssh_say(1,"\t case SSH_STATE_DH_FINISHED:\n");
 		return SSH_OK;
 		break;
+
+
+
+
+/* request the userauth service */
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_SENDING:
+	{
+		ssh_say(1,"\tcase SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_SEND?:\n");
+    	fnret = ssh_userauth_autopubkey_nonblocking(session);
+		switch (fnret)
+		{
+		case SSH_ERROR:
+		case SSH_AGAIN:
+			return fnret;
+			break;
+
+		case SSH_OK:
+			session->state = SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_READ;
+			break;
+
+		default:
+			ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+		}
+	}
+		
+
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_READ:
+		{
+			ssh_say(1,"\tcase SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_ASK_SERVICE_READ:\n");
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				ssh_say(1,"\t\tfnret = %i \n",fnret);
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_SEND;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+			}
+		}
+
+/* send the userauth none request */
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_SENDING:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+			}
+		}
+
+	case SSH_STATE_AUTH_AUTOPUBKEY_USERAUTH_NONE_READ:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_AUTH_DENIED:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_SEND;
+				break;
+
+            case SSH_AUTH_SUCCESS:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_FINISHED;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+				return SSH_ERROR;
+
+			}
+		}
+
+
+
+
+/* request the user service to offer a pubkey */
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_SENDING:
+/*		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+				return SSH_ERROR;
+
+			}
+		}
+*/
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_READ:
+/*		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_SEND;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+				return SSH_ERROR;
+
+			}
+		}
+*/
+		session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_SEND;
+
+
+/* get a pubkey and offer it */
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_SENDING:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+
+			}
+		}
+
+	case SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_READ:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			ssh_say(1,"\tcase SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_READ: %i\n",fnret);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_AUTH_DENIED:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_SEND;
+				break;
+
+			case SSH_AUTH_SUCCESS:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_SEND;
+//				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+
+			}
+		}
+		
+
+
+
+/* request the user service to send the accepted pubkey */
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_ASK_SERVICE_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_ASK_SERVICE_SENDING:
+/*		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_OFFER_PUBKEY_ASK_SERVICE_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+			}
+		}
+*/
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_ASK_SERVICE_READ:
+/*		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_ASK_SERVICE_SEND;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",retval,session->state,__FILE__,__LINE__);
+
+			}
+		}
+*/
+		
+		session->state = SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_SEND;
+
+
+/* send the accepted pubkey to login */
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_SEND:
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_SENDING:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_READ;
+				break;
+
+			default:
+				ssh_say(1,"\tssh_again unexpected return value %i in state %i  %s:%i \n",fnret,session->state,__FILE__,__LINE__);
+
+
+
+			}
+		}
+
+	case SSH_STATE_AUTH_AUTOPUBKEY_PUBKEY_READ:
+		{
+			fnret = ssh_userauth_autopubkey_nonblocking(session);
+			switch (fnret)
+			{
+			case SSH_ERROR:
+			case SSH_AGAIN:
+				return fnret;
+				break;
+
+			case SSH_OK:
+				session->state = SSH_STATE_AUTH_AUTOPUBKEY_FINISHED;
+				break;
+			}
+		}
+
+	case SSH_STATE_AUTH_AUTOPUBKEY_FINISHED:
+		{
+			printf("AUTOPUBKEY FINISHED \n");
+		}
+		retval = SSH_OK;
+		break;
+
+
+
+
 	}
 	return retval;
 }
@@ -724,7 +1068,8 @@ char *ssh_get_issue_banner(SSH_SESSION *session){
 
 void ssh_disconnect(SSH_SESSION *session){
     STRING *str;
-    if(session->fd!= -1) {
+    if(session->fd!= -1) 
+	{
         packet_clear_out(session);
         buffer_add_u8(session->out_buffer,SSH2_MSG_DISCONNECT);
         buffer_add_u32(session->out_buffer,htonl(SSH2_DISCONNECT_BY_APPLICATION));

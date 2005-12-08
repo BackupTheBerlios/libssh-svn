@@ -29,7 +29,7 @@ ssh_retval socket_read(SSH_SESSION *session,int len)
 //    char *buf;
     char buffer[4096];
 
-	int ret = SSH_OK;
+	ssh_retval ret = SSH_OK;
 
 	if(!session->in_socket_buffer)
         session->in_socket_buffer=buffer_new();
@@ -82,10 +82,15 @@ ssh_retval socket_read(SSH_SESSION *session,int len)
 			}else
 			{
 				buffer_add_data(session->in_socket_buffer,buffer,r);
+				if (buffer_get_rest_len(session->in_socket_buffer) < len )
+				{
+					ret=SSH_AGAIN;
+				}
 			}
 			ssh_say(1,"post buffer %i : %i\n", to_read, len - buffer_get_rest_len(session->in_socket_buffer));
 		} //while ( buffer_get_rest_len(session->in_socket_buffer)<len );
 	}
+	ssh_say(1,"\tsocket_read retval %i\n",ret);
 	return ret;
 }
 

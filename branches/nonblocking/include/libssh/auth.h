@@ -7,7 +7,11 @@ int ssh_userauth_none(SSH_SESSION *session,char *username);
 int ssh_userauth_password(SSH_SESSION *session,char *username,char *password);
 int ssh_userauth_offer_pubkey(SSH_SESSION *session, char *username,int type, STRING *publickey);
 int ssh_userauth_pubkey(SSH_SESSION *session, char *username, STRING *publickey, PRIVATE_KEY *privatekey);
-int ssh_userauth_autopubkey(SSH_SESSION *session);
+
+
+ssh_retval ssh_userauth_autopubkey(SSH_SESSION *session);
+ssh_retval ssh_userauth_autopubkey_nonblocking(SSH_SESSION *session);
+
 int ssh_userauth_kbdint(SSH_SESSION *session, char *user, char *submethods);
 int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session);
 char *ssh_userauth_kbdint_getname(SSH_SESSION *session);

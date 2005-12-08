@@ -26,6 +26,11 @@ struct ssh_session {
 
 	ssh_state_t 	state;
 
+	STRING 	*autopubkey_pubkey;
+	int		autopubkey_counter;	/* needed for ssh_userauth_autopubkey */
+	int 	autopubkey_type;
+	char 	*autopubkey_privkeyfile;
+
     int closed;
     int closed_by_except;
     

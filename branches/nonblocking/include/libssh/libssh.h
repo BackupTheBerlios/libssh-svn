@@ -53,11 +53,6 @@ typedef struct ssh_kbdint SSH_KBDINT;
 #define SSH_COMP 4
 #define SSH_LANG 5
 
-#define SSH_AUTH_SUCCESS 0
-#define SSH_AUTH_DENIED 1
-#define SSH_AUTH_PARTIAL 2
-#define SSH_AUTH_INFO 3
-#define SSH_AUTH_ERROR -1
 
 /* status flags */
 
@@ -87,6 +82,13 @@ typedef enum
 	SSH_ERROR=-1, 	/* error of some kind */
 	SSH_OK=0,     /* No error */
 	SSH_AGAIN=1,  /* the nonblocking call must be repeated */
+
+	SSH_AUTH_SUCCESS,
+	SSH_AUTH_DENIED,
+	SSH_AUTH_PARTIAL,
+	SSH_AUTH_INFO,
+	SSH_AUTH_ERROR,
+
 }ssh_retval;
 
 

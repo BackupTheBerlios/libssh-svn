@@ -527,7 +527,93 @@ int main(int argc, char **argv){
 	auth = SSH_AUTH_DENIED;
 	password=NULL;
 
-    auth=ssh_userauth_autopubkey(session);
+    retval=ssh_userauth_autopubkey(session);
+	if( retval == SSH_ERROR )
+	{
+		fprintf(stderr,"AUTH failed : %s\n",ssh_get_error(session));
+		ssh_disconnect(session);
+		return 1;
+	}else
+	if ( retval == SSH_AGAIN )
+	{
+
+		fd_set rfds, wfds;
+		struct timeval timeout;
+		int maxfd;
+		int ret;
+		do
+		{
+			printf("SAMPLE: got ssh_again, selecting\n");
+			FD_ZERO(&rfds);
+			FD_ZERO(&wfds);
+
+			FD_SET(0,&rfds);
+			FD_SET(ssh_get_fd(session),&rfds);
+			if (ssh_want_write(session) == 1)
+			{
+				FD_SET(ssh_get_fd(session),&wfds);
+			}
+
+
+			timeout.tv_sec=2;
+			timeout.tv_usec=0;
+
+
+			maxfd=ssh_get_fd(session)+1;
+			ret=select(maxfd,&rfds,&wfds,NULL,&timeout);
+
+			if ( ret==EINTR )
+			{
+				printf("SAMPLE: EINTR\n");
+			}
+
+			if ( FD_ISSET(0,&rfds) )
+			{
+				char buffer[20];
+				/*int lus=*/ read(0,buffer,10);
+/*			if ( lus )
+					channel_write(channel,buffer,lus);
+				else
+				{
+					eof=1;
+					channel_send_eof(channel);
+				}
+*/				
+			}
+
+			if ( FD_ISSET(ssh_get_fd(session),&wfds) )
+			{
+				retval = ssh_again(session);
+			}
+			if ( FD_ISSET(ssh_get_fd(session),&rfds) )
+			{
+				retval = ssh_again(session);
+			}
+			printf("SAMPLE revtal = %i\n",retval);
+
+		} while ( retval == SSH_AGAIN );
+
+
+		if (retval == SSH_ERROR)
+		{
+			printf("SAMPLE: SSH_ERROR\n");
+			exit(0);
+		}else
+		if (retval == SSH_OK)
+		{
+			printf("SAMPLE: SSH_OK\n");
+		}else
+		if (retval == SSH_AUTH_DENIED)
+		{
+			printf("SAMPLE: SSH_AUTH_DENIED\n");
+			exit(0);
+		}
+
+	}
+
+	exit(0);
+
+
     if(auth==SSH_AUTH_ERROR){
         fprintf(stderr,"Authenticating with pubkey: %s\n",ssh_get_error(session));
         return -1;
@@ -539,7 +625,7 @@ int main(int argc, char **argv){
     }
 
 
-    if(auth!=SSH_AUTH_SUCCESS){
+    if(retval !=SSH_AUTH_SUCCESS){
         auth=auth_kbdint(session);
         if(auth==SSH_AUTH_ERROR){
             fprintf(stderr,"authenticating with keyb-interactive: %s\n",
