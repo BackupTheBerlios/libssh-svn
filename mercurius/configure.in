@@ -31,12 +31,13 @@ AC_CHECK_LIB([ssh], [ssh_connect])
 AC_SEARCH_LIBS([hstrerror],[nsl resolv])
 AC_SEARCH_LIBS([getaddrinfo],[nsl resolv])
 AC_SEARCH_LIBS([gethostbyname],[nsl resolv])
-
+AC_SEARCH_LIBS([pam_start],[pam])
 # Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS([fcntl.h netdb.h netinet/in.h stdlib.h string.h sys/socket.h \
 sys/time.h termios.h unistd.h openssl/aes.h openssl/blowfish.h \
-openssl/des.h zlib.h sys/poll.h stdint.h pty.h gcrypt.h])
+openssl/des.h zlib.h sys/poll.h stdint.h pty.h gcrypt.h security/pam_appl.h \
+pam/pam_appl.h])
 
 #Warn user when no openssl available
 #FIXME ! how to make it work with gcrypt ?

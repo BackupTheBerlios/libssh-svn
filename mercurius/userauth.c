@@ -23,6 +23,7 @@ MA 02111-1307, USA. */
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 //#include <libssh/sftp.h>
+#include "config.h"
 #ifdef HAVE_SECURITY_PAM_APPL_H
   #include <security/pam_appl.h>
 #else 
