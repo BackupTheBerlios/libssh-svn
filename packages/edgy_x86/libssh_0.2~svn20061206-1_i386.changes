@@ -1,0 +1,25 @@
+Format: 1.7
+Date: Thu,  7 Dec 2006 00:05:12 +0100
+Source: libssh
+Binary: libssh2-dev libssh2 libssh2-dbg
+Architecture: source i386
+Version: 0.2~svn20061206-1
+Distribution: unstable
+Urgency: low
+Maintainer: Jean-Philippe Garcia Ballester <giga@le-pec.org>
+Changed-By: Laurent Bigonville <bigon@bigon.be>
+Description: 
+ libssh2    - A tiny C SSH library
+ libssh2-dbg - A tiny C SSH library. Debug symbols
+ libssh2-dev - A tiny C SSH library. Development files and documentation
+Closes: 316872
+Changes: 
+ libssh (0.2~svn20061206-1) unstable; urgency=low
+ .
+   * Initial release (Closes: #316872)
+Files: 
+ 64475164a3f751e77d7b416bf68c01b4 406 libs optional libssh_0.2~svn20061206-1.dsc
+ 6487ca86ebf8bce18830cd268b3d203e 836603 libs optional libssh_0.2~svn20061206-1.tar.gz
+ 421a9a44b370c6e26c7277d1b8249e07 59774 libs optional libssh2_0.2~svn20061206-1_i386.deb
+ 5f7c5fc230c7603acea6b60dc0ec858e 154922 libdevel optional libssh2-dev_0.2~svn20061206-1_i386.deb
+ 94e72966368ce321116b302aaae29436 113012 libdevel optional libssh2-dbg_0.2~svn20061206-1_i386.deb
