@@ -1,0 +1,11 @@
+libssh (0.2-1) unstable; urgency=low
+
+  * New upstream release. 
+
+ -- Laurent Bigonville <bigon@bigon.be>  Fri, 29 Dec 2006 07:40:20 +0100
+
+libssh (0.2~rc-1) unstable; urgency=low
+
+  * Initial release (Closes: #316872)
+
+ -- Jean-Philippe Garcia Ballester <giga@le-pec.org>  Wed, 20 Dec 2006 23:56:50 +0100
