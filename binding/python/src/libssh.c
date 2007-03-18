@@ -83,7 +83,7 @@ static PyGetSetDef BUFFER_OBJECT_getseters[] = {
 static PyTypeObject BUFFER_OBJECT_type = {
 	PyObject_HEAD_INIT(NULL)
 	0,				/* ob_size */
-	"libssh.BUFFER",		/* tp_name */
+	"pylibssh.BUFFER",		/* tp_name */
 	sizeof(BUFFER_OBJECT),		/* tp_basicsize */
 	0,				/* tp_itemsize */	
 	(destructor)BUFFER_dealloc, 	/* tp_dealloc */
@@ -805,7 +805,7 @@ static PyGetSetDef OPTIONS_OBJECT_getseters[] = {
 static PyTypeObject OPTIONS_OBJECT_type = {
 	PyObject_HEAD_INIT(NULL)
 	0,				/* ob_size */
-	"libssh.OPTIONS",		/* tp_name */
+	"pylibssh.OPTIONS",		/* tp_name */
 	sizeof(OPTIONS_OBJECT),		/* tp_basicsize */
 	0,				/* tp_itemsize */	
 	(destructor)OPTIONS_OBJECT_dealloc, 	/* tp_dealloc */
@@ -1169,7 +1169,7 @@ static PyGetSetDef CHANNEL_OBJECT_getseters[] = {
 static PyTypeObject CHANNEL_OBJECT_type = {
 	PyObject_HEAD_INIT(NULL)
 	0,				/* ob_size */
-	"libssh.CHANNEL",		/* tp_name */
+	"pylibssh.CHANNEL",		/* tp_name */
 	sizeof(CHANNEL_OBJECT),		/* tp_basicsize */
 	0,				/* tp_itemsize */	
 	(destructor)CHANNEL_OBJECT_dealloc, 	/* tp_dealloc */
@@ -1648,7 +1648,7 @@ static PyGetSetDef SESSION_OBJECT_getseters[] = {
 static PyTypeObject SESSION_OBJECT_type = {
 	PyObject_HEAD_INIT(NULL)
 	0,				/* ob_size */
-	"libssh.SESSION",		/* tp_name */
+	"pylibssh.SESSION",		/* tp_name */
 	sizeof(SESSION_OBJECT),		/* tp_basicsize */
 	0,				/* tp_itemsize */	
 	(destructor)SESSION_dealloc, 	/* tp_dealloc */
@@ -1697,7 +1697,7 @@ static void install_int_const(PyObject *d, char *name, int value){
 	Py_XDECREF(v);
 }
 
-void initlibssh(void){
+void initpylibssh(void){
 	PyObject *m, *d;
 
 	if(PyType_Ready(&BUFFER_OBJECT_type) < 0)
@@ -1712,7 +1712,7 @@ void initlibssh(void){
 	if(PyType_Ready(&CHANNEL_OBJECT_type) < 0)
 		return ;
 
-	m = Py_InitModule("libssh", NULL);
+	m = Py_InitModule("pylibssh", NULL);
 	Py_INCREF(&BUFFER_OBJECT_type);
 	PyModule_AddObject(m, "BUFFER", (PyObject *)&BUFFER_OBJECT_type);
 	

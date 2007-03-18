@@ -3,12 +3,12 @@
 import sys
 import getpass
 import termios
-import libssh
+import pylibssh
 
 def auth_kdbint(session):
 	err = session.userauth_kbdint("", "")
 	print err
-	while(err == libssh.SSH_AUTH_INFO) :	
+	while(err ==pylibssh.SSH_AUTH_INFO) :	
 		name = session.userauth_kbdint_getname()
 		instruction = session.userauth_kbdint_getname()
 		n = session.userauth_kbdint_getnprompts()	
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 	print "------ DEBUT TEST ------"
 
 	#options = libssh.OPTIONS(["-l", "shy", "localhost"])
-	options = libssh.OPTIONS("shy")
+	options = pylibssh.OPTIONS("shy")
 	options.username = "shy"
 	options.port = 22
 	options.host = "localhost"
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
 	options.getopt(["-l", "shy", "localhost"])
 	
-	ssh = libssh.SESSION(options)
+	ssh = pylibssh.SESSION(options)
 
 	try :
 		ssh.connect()
@@ -49,16 +49,16 @@ if __name__ == "__main__":
 		sys.exit(-1)
 	
 	state = ssh.is_server_known()
-	if(state == libssh.SSH_SERVER_KNOWN_OK) :
+	if(state == pylibssh.SSH_SERVER_KNOWN_OK) :
 		print "SSH_SERVER_KNOWN_OK"
-	elif(state == libssh.SSH_SERVER_KNOWN_CHANGED) :
+	elif(state == pylibssh.SSH_SERVER_KNOWN_CHANGED) :
 		print "SSH_SERVER_KNOWN_CHANGED"
-	elif(state == libssh.SSH_SERVER_FOUND_OTHER) :
+	elif(state == pylibssh.SSH_SERVER_FOUND_OTHER) :
 		print "SSH_SERVER_FOUND_OTHER"
 
 
 	auth = ssh.userauth_autopubkey()
-	if(auth == libssh.SSH_AUTH_ERROR) :
+	if(auth == pylibssh.SSH_AUTH_ERROR) :
 		print "SSH_AUTH_ERROR"
 		sys.exit(-1)
 
@@ -66,12 +66,12 @@ if __name__ == "__main__":
 
 	print ssh.version
 
-	if(auth != libssh.SSH_AUTH_SUCCESS) :
+	if(auth != pylibssh.SSH_AUTH_SUCCESS) :
 		auth = auth_kdbint(ssh)
-		if(auth == libssh.SSH_AUTH_ERROR) :
+		if(auth == pylibssh.SSH_AUTH_ERROR) :
 			ssh.get_error()
 							
-	channel = libssh.CHANNEL(ssh)
+	channel = pylibssh.CHANNEL(ssh)
 	interactive = sys.stdin.isatty()
 	if(interactive) :
 		fd = termios.tcgetattr(0)
