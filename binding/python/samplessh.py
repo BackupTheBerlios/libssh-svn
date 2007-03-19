@@ -3,6 +3,8 @@
 import sys
 import getpass
 import termios
+import fcntl
+import array
 import pylibssh
 
 def auth_kdbint(session):
@@ -30,7 +32,7 @@ if __name__ == "__main__":
 	print "------ DEBUT TEST ------"
 
 	#options = libssh.OPTIONS(["-l", "shy", "localhost"])
-	options = pylibssh.OPTIONS("shy")
+	options = pylibssh.OPTIONS("shy", "localhost", 22)
 	options.username = "shy"
 	options.port = 22
 	options.host = "localhost"
@@ -38,7 +40,7 @@ if __name__ == "__main__":
 	#options.timeout[0] = 3
 	#print options.timeout
 
-	options.getopt(["-l", "shy", "localhost"])
+	#options.getopt(["-l", "shy", "localhost"])
 	
 	ssh = pylibssh.SESSION(options)
 
@@ -70,16 +72,42 @@ if __name__ == "__main__":
 		auth = auth_kdbint(ssh)
 		if(auth == pylibssh.SSH_AUTH_ERROR) :
 			ssh.get_error()
-							
+			sys.exit(-1)
+			
+	if(auth !=pylibssh.SSH_AUTH_SUCCESS) :
+		if(ssh.userauth_password("fuck") != pylibssh.SSH_AUTH_SUCCESS) :
+			ssh.get_error()
+			sys.exit(-1)
+			
 	channel = pylibssh.CHANNEL(ssh)
+	
 	interactive = sys.stdin.isatty()
+	terminal_local = None
 	if(interactive) :
-		fd = termios.tcgetattr(0)
+		terminal_local = termios.tcgetattr(0)
 
 	channel.open_session()
 	
-	if(channel.request_exec("echo bla > /tmp/truc")) : 
-		print ssh.get_error()
+	if(interactive) :
+		channel.request_pty()
+		win = array.array('h', [0, 1, 2, 3])
+		fcntl.ioctl(1, termios.TIOCGWINSZ, win, 4)
+		print win
+		channel.change_pty_size(win[0], win[1])
+		
+	if(channel.request_shell()):
+		ssh.get_error();
+		sys.exit(-1)
+	
+	if(interactive) :
+		#####
+		#cfmakeraw
+		#####
+		termios.tcsetattr(0, termios.TCSANOW, terminal_local)
+
+	
+	#if(channel.request_exec("echo bla > /tmp/truc")) : 
+	#	print ssh.get_error()
 	
 	channel.free()
 	#del channel

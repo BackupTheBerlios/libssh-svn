@@ -2,9 +2,12 @@
 #include "structmember.h"
 
 #include <libssh/libssh.h>
+#include <libssh/sftp.h>
+#include <libssh/server.h>
 
 typedef struct {
 	PyObject_HEAD
+	PyObject *buf;
 	BUFFER *buffer;
 } BUFFER_OBJECT;
 
@@ -40,8 +43,15 @@ typedef struct {
 	CHANNEL *channel;
 } CHANNEL_OBJECT;
 
+typedef struct {
+	PyObject_HEAD
+	SSH_BIND *bind;
+} BIND_OBJECT;
 
-static void BUFFER_dealloc(BUFFER_OBJECT *self){
+
+
+static void BUFFER_dealloc(BUFFER_OBJECT *self)
+{
 	printf("JE ME BARRE DE BUFFER  !!\n");
 
 	if(self->buffer != NULL)
@@ -52,20 +62,39 @@ static void BUFFER_dealloc(BUFFER_OBJECT *self){
         self->ob_type->tp_free((PyObject *)self);
 }
 
-static PyObject *BUFFER_new(PyTypeObject *type, PyObject *args, PyObject *kwds){
+static PyObject *BUFFER_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
 	BUFFER_OBJECT *self;
+
+	printf("CREATION DE BUFFER !!!\n");
 
 	self = (BUFFER_OBJECT *)type->tp_alloc(type, 0);
 
 	if(self != NULL){
 		self->buffer = buffer_new();
+	
+		self->buf = PyString_FromString("");
+		if(self->buf == NULL){
+			Py_DECREF(self);
+			return NULL;
+		}
 	}
 
 	return (PyObject *)self;
 }
 
-static int BUFFER_init(BUFFER_OBJECT *self, PyObject *args, PyObject *kwds){
+static int BUFFER_init(BUFFER_OBJECT *self, PyObject *args, PyObject *kwds)
+{
 	return 0;
+}
+
+static PyObject *
+BUFFER_OBJECT_get_buf(BUFFER_OBJECT *self, void *closure)
+{
+	self->buf = PyString_FromStringAndSize(buffer_get(self->buffer), buffer_get_len(self->buffer));
+	
+	Py_INCREF(self->buf);
+	return self->buf;
 }
 
 static PyMethodDef BUFFER_OBJECT_methods[] = {
@@ -77,6 +106,7 @@ static PyMemberDef BUFFER_OBJECT_members[] = {
 };
 
 static PyGetSetDef BUFFER_OBJECT_getseters[] = {
+	{ "buf", (getter)BUFFER_OBJECT_get_buf, NULL, "buf", NULL },
 	{ NULL }  /* Sentinel */
 };
 
@@ -124,7 +154,8 @@ static PyTypeObject BUFFER_OBJECT_type = {
 };
 
 
-static void OPTIONS_OBJECT_dealloc(OPTIONS_OBJECT *self){
+static void OPTIONS_OBJECT_dealloc(OPTIONS_OBJECT *self)
+{
 	printf("JE ME BARRE DE OPTIONS !!\n");
 
 	Py_XDECREF(self->banner);
@@ -144,8 +175,11 @@ static void OPTIONS_OBJECT_dealloc(OPTIONS_OBJECT *self){
         self->ob_type->tp_free((PyObject *)self);
 }
 
-static PyObject *OPTIONS_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds){
+static PyObject *OPTIONS_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
 	OPTIONS_OBJECT *self;
+
+	printf("CREATION DE OPTIONS !!!\n");
 
 	self = (OPTIONS_OBJECT *)type->tp_alloc(type, 0);
 
@@ -223,13 +257,18 @@ static PyObject *OPTIONS_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject
 	return (PyObject *)self;
 }
 
-static int OPTIONS_OBJECT_init(OPTIONS_OBJECT *self, PyObject *args, PyObject *kwds){
-	PyObject *username, *tmp;
-
-	static char *kwlist[] = { "username", NULL };
-
+static int OPTIONS_OBJECT_init(OPTIONS_OBJECT *self, PyObject *args, PyObject *kwds)
+{
+	PyObject *username, *hostname, *tmp;
+	char *user, *host;
+	int port = 0;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "S", kwlist, &username))
+	static char *kwlist[] = { "username", "hostname", "port", NULL };
+
+	if(self->options == NULL)
+		return -1;
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "SSi", kwlist, &username, &hostname, &port))
 		return -1; 
 
 	if(username){
@@ -237,8 +276,29 @@ static int OPTIONS_OBJECT_init(OPTIONS_OBJECT *self, PyObject *args, PyObject *k
 		Py_INCREF(username);
 		self->username = username;
 		Py_DECREF(tmp);
+		
+		user = PyString_AsString(self->username);
+
+		ssh_options_set_username(self->options, user);
 	}
 
+	if(hostname){
+		tmp = self->host;
+		Py_INCREF(hostname);
+		self->host = hostname;
+		Py_DECREF(self->host);
+		
+		host = PyString_AsString(self->host);
+		ssh_options_set_host(self->options, host);
+	}
+	
+	if(port){
+		self->port = PyInt_FromLong(port);
+		Py_INCREF(self->port);
+		
+		ssh_options_set_port(self->options, port);
+	}
+	
 	/*int argc, i;
 	char **argvlist = NULL;
 	PyObject *argv;
@@ -287,14 +347,19 @@ static int OPTIONS_OBJECT_init(OPTIONS_OBJECT *self, PyObject *args, PyObject *k
 // 	set the server banner sent to clients
 
 static PyObject *
-OPTIONS_OBJECT_get_banner(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_banner(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->banner);
 	return self->banner;
 }
 
 static int 
-OPTIONS_OBJECT_set_banner(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_banner(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *banner;
+	if(self->options == NULL)
+		return -1;
+	
 	if(value == NULL) {
 		PyErr_SetString(PyExc_TypeError, "Cannot delete the banner");
 		return -1;
@@ -322,13 +387,16 @@ OPTIONS_OBJECT_set_banner(OPTIONS_OBJECT *self, PyObject *value, void *closure){
 static PyObject *OPTIONS_OBJECT_set_bind(OPTIONS_OBJECT *self, PyObject *args){
 	char *bindaddr = NULL;
 	int port;
-
+	
+	if(self->options == NULL)
+		return NULL;
+	
 	if(!PyArg_ParseTuple(args, "si", &bindaddr, &port))
 		return NULL;
 
 	printf("BINDADDR %s %d\n", bindaddr, port);
-	if(self->options != NULL)
-		ssh_options_set_bind(self->options, bindaddr, port);
+
+	ssh_options_set_bind(self->options, bindaddr, port);
 	
 	Py_INCREF(Py_None);
 	return Py_None;
@@ -337,14 +405,20 @@ static PyObject *OPTIONS_OBJECT_set_bind(OPTIONS_OBJECT *self, PyObject *args){
 //void 	ssh_options_set_dsa_server_key (SSH_OPTIONS *opt, char *dsakey)
 
 static PyObject *
-OPTIONS_OBJECT_get_dsa_server_key(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_dsa_server_key(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->dsa_server_key);
 	return self->dsa_server_key;
 }
 
 static int 
-OPTIONS_OBJECT_set_dsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_dsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *dsa_server_key;
+	
+	if(self->options == NULL)
+		return -1;
+	
 	if(value == NULL) {
 		PyErr_SetString(PyExc_TypeError, "Cannot delete the dsa_server_key");
 		return -1;
@@ -370,13 +444,15 @@ OPTIONS_OBJECT_set_dsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *c
 //	set a file descriptor for connection
 
 static PyObject *
-OPTIONS_OBJECT_get_fd(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_fd(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->fd);
 	return self->fd;
 }
 
 static int 
-OPTIONS_OBJECT_set_fd(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_fd(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	int fd;
 
 	if(self->options == NULL)
@@ -408,13 +484,15 @@ OPTIONS_OBJECT_set_fd(OPTIONS_OBJECT *self, PyObject *value, void *closure){
 // 	set destination hostname
 
 static PyObject *
-OPTIONS_OBJECT_get_host(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_host(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->host);
 	return self->host;
 }
 
 static int 
-OPTIONS_OBJECT_set_host(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_host(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *host;
 	
 	if(self->options == NULL)
@@ -482,13 +560,15 @@ OPTIONS_OBJECT_set_identity(OPTIONS_OBJECT *self, PyObject *value, void *closure
 // 	set the known hosts file name
 
 static PyObject *
-OPTIONS_OBJECT_get_known_hosts_file(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_known_hosts_file(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->known_hosts_file);
 	return self->known_hosts_file;
 }
 
 static int 
-OPTIONS_OBJECT_set_known_hosts_file(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_known_hosts_file(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *known_hosts_file;
 
 	if(self->options == NULL)
@@ -519,13 +599,15 @@ OPTIONS_OBJECT_set_known_hosts_file(OPTIONS_OBJECT *self, PyObject *value, void 
 // 	set port to connect or to bind for a connection
 
 static PyObject *
-OPTIONS_OBJECT_get_port(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_port(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->port);
 	return self->port;
 }
 
 static int 
-OPTIONS_OBJECT_set_port(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_port(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	int port;
 
 	if(self->options == NULL)
@@ -557,13 +639,15 @@ OPTIONS_OBJECT_set_port(OPTIONS_OBJECT *self, PyObject *value, void *closure){
 //void 	ssh_options_set_rsa_server_key (SSH_OPTIONS *opt, char *rsakey)
 
 static PyObject *
-OPTIONS_OBJECT_get_rsa_server_key(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_rsa_server_key(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->rsa_server_key);
 	return self->rsa_server_key;
 }
 
 static int 
-OPTIONS_OBJECT_set_rsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_rsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *rsa_server_key;
 
 	if(self->options == NULL)
@@ -594,13 +678,15 @@ OPTIONS_OBJECT_set_rsa_server_key(OPTIONS_OBJECT *self, PyObject *value, void *c
 // 	set the ssh directory
 
 static PyObject *
-OPTIONS_OBJECT_get_ssh_dir(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_ssh_dir(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->ssh_dir);
 	return self->ssh_dir;
 }
 
 static int 
-OPTIONS_OBJECT_set_ssh_dir(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_ssh_dir(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *ssh_dir;
 
 	if(self->options == NULL)
@@ -674,15 +760,19 @@ OPTIONS_OBJECT_set_timeout(OPTIONS_OBJECT *self, PyObject *value, void *closure)
 }*/
 
 static PyObject *
-OPTIONS_OBJECT_set_timeout(OPTIONS_OBJECT *self, PyObject *args){
+OPTIONS_OBJECT_set_timeout(OPTIONS_OBJECT *self, PyObject *args)
+{
 	long seconds, timeout;
-
+	
+	if(self->options == NULL)
+		return NULL;
+	
 	if(!PyArg_ParseTuple(args, "ll", &seconds, &timeout))
 		return NULL;
 
 	printf("SECONDS %d TIMEOUT %d\n", seconds, timeout);
-	if(self->options != NULL)
-		ssh_options_set_timeout(self->options, seconds, timeout);
+
+	ssh_options_set_timeout(self->options, seconds, timeout);
 	
 	Py_INCREF(Py_None);
 	return Py_None;
@@ -692,13 +782,15 @@ OPTIONS_OBJECT_set_timeout(OPTIONS_OBJECT *self, PyObject *args){
 // 	set username for authentication
 
 static PyObject *
-OPTIONS_OBJECT_get_username(OPTIONS_OBJECT *self, void *closure){
+OPTIONS_OBJECT_get_username(OPTIONS_OBJECT *self, void *closure)
+{
 	Py_INCREF(self->username);
 	return self->username;
 }
 
 static int 
-OPTIONS_OBJECT_set_username(OPTIONS_OBJECT *self, PyObject *value, void *closure){
+OPTIONS_OBJECT_set_username(OPTIONS_OBJECT *self, PyObject *value, void *closure)
+{
 	char *username;
 
 	if(self->options == NULL)
@@ -730,7 +822,8 @@ OPTIONS_OBJECT_set_username(OPTIONS_OBJECT *self, PyObject *value, void *closure
 
 
 
-static PyObject *OPTIONS_OBJECT_getopt(OPTIONS_OBJECT *self, PyObject *args){
+static PyObject *OPTIONS_OBJECT_getopt(OPTIONS_OBJECT *self, PyObject *args)
+{
 	int argc, i;
 	char **argvlist = NULL;
 	PyObject *argv;
@@ -778,7 +871,7 @@ static PyObject *OPTIONS_OBJECT_getopt(OPTIONS_OBJECT *self, PyObject *args){
 }
 
 static PyMethodDef OPTIONS_OBJECT_methods[] = {
-	{ "getopt", (PyCFunction)OPTIONS_OBJECT_getopt, METH_VARARGS, "blabla" },
+//	{ "getopt", (PyCFunction)OPTIONS_OBJECT_getopt, METH_VARARGS, "blabla" },
 	{ "set_bind", (PyCFunction)OPTIONS_OBJECT_set_bind, METH_VARARGS, "blabla" },
 	{ "set_timeout", (PyCFunction)OPTIONS_OBJECT_set_timeout, METH_VARARGS, "blabla" },
 	{ NULL }
@@ -848,7 +941,8 @@ static PyTypeObject OPTIONS_OBJECT_type = {
 
 
 static void 
-CHANNEL_OBJECT_dealloc(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_dealloc(CHANNEL_OBJECT *self)
+{
 	printf("JE ME BARRE DE CHANNEL !!\n");
 	
 	if(self->channel != NULL && channel_is_closed(self->channel)){
@@ -859,8 +953,11 @@ CHANNEL_OBJECT_dealloc(CHANNEL_OBJECT *self){
 }
 
 static PyObject *
-CHANNEL_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds){
+CHANNEL_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
 	CHANNEL_OBJECT *self;
+
+	printf("CREATION DE CHANNEL !!!\n");
 
 	self = (CHANNEL_OBJECT *)type->tp_alloc(type, 0);
 
@@ -870,9 +967,9 @@ CHANNEL_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds){
 }
 
 static int 
-CHANNEL_OBJECT_init(CHANNEL_OBJECT *self, PyObject *args, PyObject *kwds){
+CHANNEL_OBJECT_init(CHANNEL_OBJECT *self, PyObject *args, PyObject *kwds)
+{
 	PyObject *obj;
-//	SESSION_OBJECT *ssh;
 	static char *kwlist[] = { "session", NULL };
 
 	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &obj))
@@ -889,11 +986,28 @@ CHANNEL_OBJECT_init(CHANNEL_OBJECT *self, PyObject *args, PyObject *kwds){
 //int 	channel_change_pty_size (CHANNEL *channel, int cols, int rows)
 // 	change the size of the terminal associated to a channel
 
+static PyObject *
+CHANNEL_OBJECT_change_pty_size(CHANNEL_OBJECT *self, PyObject *args)
+{
+	int cols, rows, state;
+	
+	if(self->channel == NULL)
+		return NULL;	
+	
+	if(!PyArg_ParseTuple(args, "ii", &cols, &rows))
+		return NULL;
+	
+	state = channel_change_pty_size(self->channel, cols, rows);
+	
+	return Py_BuildValue("i", state);
+}
+
 //int 	channel_close (CHANNEL *channel)
 // 	close a channel
 
 static PyObject *
-CHANNEL_OBJECT_close(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_close(CHANNEL_OBJECT *self)
+{
 	int state;
 	
 	if(self->channel == NULL)
@@ -925,7 +1039,8 @@ CHANNEL_OBJECT_free(CHANNEL_OBJECT *self){
 // 	recover the session in which belong a channel
 
 static PyObject *
-CHANNEL_OBJECT_get_session(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_get_session(CHANNEL_OBJECT *self)
+{
 	Py_INCREF(self->session);
 	return (PyObject *)self->session;
 }
@@ -934,7 +1049,8 @@ CHANNEL_OBJECT_get_session(CHANNEL_OBJECT *self){
 // 	returns if the channel is closed or not
 
 static PyObject *
-CHANNEL_OBJECT_is_closed(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_is_closed(CHANNEL_OBJECT *self)
+{
 	int state;
 	
 	if(self->channel == NULL)
@@ -949,7 +1065,8 @@ CHANNEL_OBJECT_is_closed(CHANNEL_OBJECT *self){
 //	returns if the remote has sent an EOF
 
 static PyObject *
-CHANNEL_OBJECT_is_eof(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_is_eof(CHANNEL_OBJECT *self)
+{
 	int state;
 	
 	if(self->channel == NULL)
@@ -964,7 +1081,8 @@ CHANNEL_OBJECT_is_eof(CHANNEL_OBJECT *self){
 // 	returns if the channel is open or not
 
 static PyObject *
-CHANNEL_OBJECT_is_open(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_is_open(CHANNEL_OBJECT *self)
+{
 	int state;
 	
 	if(self->channel == NULL)
@@ -978,12 +1096,30 @@ CHANNEL_OBJECT_is_open(CHANNEL_OBJECT *self){
 //int 	channel_open_forward (CHANNEL *channel, char *remotehost, int remoteport, char *sourcehost, int localport)
 // 	open a TCP/IP forwarding channel.
 
+static PyObject *
+CHANNEL_OBJECT_open_forward(CHANNEL_OBJECT *self, PyObject *args)
+{
+	char *remotehost, *sourcehost;
+	int remoteport, localport, state;
+
+	if(self->channel == NULL)
+		return NULL;
+
+	if(!PyArg_ParseTuple(args, "sisi", &remotehost, &remoteport, &sourcehost, &localport))
+		return NULL;		
+		
+	state = channel_open_forward(self->channel, remotehost, remoteport, sourcehost, localport);
+
+	return Py_BuildValue("i", state);
+}
+
 //int 	channel_open_session (CHANNEL *channel)
 // 	open a session channel (suited for a shell. Not tcp)
 
 
 static PyObject *
-CHANNEL_OBJECT_open_session(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_open_session(CHANNEL_OBJECT *self)
+{
 	int state;
 
 	if(self->channel == NULL)
@@ -998,15 +1134,16 @@ CHANNEL_OBJECT_open_session(CHANNEL_OBJECT *self){
 // 	polls the channel for data to read
 
 static PyObject *
-CHANNEL_OBJECT_poll(CHANNEL_OBJECT *self, PyObject *args){
+CHANNEL_OBJECT_poll(CHANNEL_OBJECT *self, PyObject *args)
+{
 	int state, is_stderr;
 
-	if(!PyArg_ParseTuple(args, "i", &is_stderr))
-		return NULL;
-		
 	if(self->channel == NULL)
 		return NULL;
-	
+
+	if(!PyArg_ParseTuple(args, "i", &is_stderr))
+		return NULL;		
+		
 	state = channel_poll(self->channel, is_stderr);
 
 	return Py_BuildValue("i", state);
@@ -1015,8 +1152,47 @@ CHANNEL_OBJECT_poll(CHANNEL_OBJECT *self, PyObject *args){
 //int 	channel_read (CHANNEL *channel, BUFFER *buffer, int bytes, int is_stderr)
  //	reads data from a channel
 
+
+static PyObject *
+CHANNEL_OBJECT_read(CHANNEL_OBJECT *self, PyObject *args)
+{
+	PyObject *obj;
+	BUFFER_OBJECT *buffer;
+	int state, bytes, is_stderr;
+
+	if(self->channel == NULL)
+		return NULL;
+
+	if(!PyArg_ParseTuple(args, "Oii", &obj, &bytes, &is_stderr))
+		return NULL;		
+		
+	buffer = (BUFFER_OBJECT *)obj;
+	
+	state = channel_read(self->channel, buffer->buffer, bytes, is_stderr);
+
+	return Py_BuildValue("i", state);
+}
+
+
 //int 	channel_read_nonblocking (CHANNEL *channel, char *dest, int len, int is_stderr)
 // 	nonblocking read
+
+/*
+static PyObject *
+CHANNEL_OBJECT_read_nonblocking(CHANNEL_OBJECT *self, PyObject *args)
+{
+	int state, is_stderr;
+
+	if(self->channel == NULL)
+		return NULL;
+
+	if(!PyArg_ParseTuple(args, "i", &is_stderr))
+		return NULL;		
+		
+	state = channel_poll(self->channel, is_stderr);
+
+	return Py_BuildValue("i", state);
+}*/
 
 //int 	channel_request_env (CHANNEL *channel, char *name, char *value)
 // 	set the environement variables
@@ -1025,7 +1201,8 @@ CHANNEL_OBJECT_poll(CHANNEL_OBJECT *self, PyObject *args){
 // 	run a shell command without an interactive shell
 
 static PyObject *
-CHANNEL_OBJECT_request_exec(CHANNEL_OBJECT *self, PyObject *args){
+CHANNEL_OBJECT_request_exec(CHANNEL_OBJECT *self, PyObject *args)
+{
 	int state;
 	char *cmd;
 
@@ -1046,7 +1223,8 @@ CHANNEL_OBJECT_request_exec(CHANNEL_OBJECT *self, PyObject *args){
 // 	requests a pty
 
 static PyObject *
-CHANNEL_OBJECT_request_pty(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_request_pty(CHANNEL_OBJECT *self)
+{
 	int state;
 
 	if(self->channel == NULL)
@@ -1064,7 +1242,8 @@ CHANNEL_OBJECT_request_pty(CHANNEL_OBJECT *self){
 // 	requests a shell
 
 static PyObject *
-CHANNEL_OBJECT_request_shell(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_request_shell(CHANNEL_OBJECT *self)
+{
 	int state;
 
 	if(self->channel == NULL)
@@ -1079,7 +1258,8 @@ CHANNEL_OBJECT_request_shell(CHANNEL_OBJECT *self){
 // 	requests a subsystem (for example sftp)
 
 static PyObject *
-CHANNEL_OBJECT_request_subsystem(CHANNEL_OBJECT *self, PyObject *args){
+CHANNEL_OBJECT_request_subsystem(CHANNEL_OBJECT *self, PyObject *args)
+{
 	int state;
 	char *system;
 
@@ -1104,7 +1284,8 @@ CHANNEL_OBJECT_request_subsystem(CHANNEL_OBJECT *self, PyObject *args){
 // 	send an end of file on the channel
 
 static PyObject *
-CHANNEL_OBJECT_send_eof(CHANNEL_OBJECT *self){
+CHANNEL_OBJECT_send_eof(CHANNEL_OBJECT *self)
+{
 	int state;
 	
 	if(self->channel == NULL)
@@ -1150,10 +1331,23 @@ CHANNEL_OBJECT_set_blocking(CHANNEL_OBJECT *self, PyObject *value, void *closure
 //int 	channel_write (CHANNEL *channel, void *data, int len)
 // 	blocking write on channel 
 	
+
 static PyMethodDef CHANNEL_OBJECT_methods[] = {
-	{ "open_session", (PyCFunction)CHANNEL_OBJECT_open_session, METH_NOARGS, "blabla" },
-	{ "request_exec", (PyCFunction)CHANNEL_OBJECT_request_exec, METH_VARARGS, "blabla" },
+	{ "change_pty_size", (PyCFunction)CHANNEL_OBJECT_change_pty_size, METH_VARARGS, "blabla" },
+	{ "close", (PyCFunction)CHANNEL_OBJECT_close, METH_NOARGS, "blabla" },
 	{ "free", (PyCFunction)CHANNEL_OBJECT_free, METH_NOARGS, "blabla" },
+	{ "is_closed", (PyCFunction)CHANNEL_OBJECT_is_closed, METH_NOARGS, "blabla" },
+	{ "is_eof", (PyCFunction)CHANNEL_OBJECT_is_eof, METH_NOARGS, "blabla" },
+	{ "is_open", (PyCFunction)CHANNEL_OBJECT_is_open, METH_NOARGS, "blabla" },
+	{ "open_forward", (PyCFunction)CHANNEL_OBJECT_open_forward, METH_VARARGS, "blabla" },
+	{ "open_session", (PyCFunction)CHANNEL_OBJECT_open_session, METH_NOARGS, "blabla" },
+	{ "poll", (PyCFunction)CHANNEL_OBJECT_poll, METH_VARARGS, "blabla" },
+	{ "read", (PyCFunction)CHANNEL_OBJECT_read, METH_VARARGS, "blabla" },
+	{ "request_exec", (PyCFunction)CHANNEL_OBJECT_request_exec, METH_VARARGS, "blabla" },
+	{ "request_pty", (PyCFunction)CHANNEL_OBJECT_request_pty, METH_NOARGS, "blabla" },
+	{ "request_shell", (PyCFunction)CHANNEL_OBJECT_request_shell, METH_VARARGS, "blabla" },
+	{ "request_subsystem", (PyCFunction)CHANNEL_OBJECT_request_subsystem, METH_VARARGS, "blabla" },
+	{ "send_eof", (PyCFunction)CHANNEL_OBJECT_send_eof, METH_NOARGS, "blabla" },
 	{ NULL }
 };
 
@@ -1212,7 +1406,7 @@ static PyTypeObject CHANNEL_OBJECT_type = {
 
 
 static void 
-SESSION_dealloc(SESSION_OBJECT *self)
+SESSION_OBJECT_dealloc(SESSION_OBJECT *self)
 {
 	printf("JE ME BARRE DE SESSION !!\n");
 
@@ -1233,9 +1427,11 @@ SESSION_dealloc(SESSION_OBJECT *self)
 }
 
 static PyObject *
-SESSION_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+SESSION_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
 	SESSION_OBJECT *self;
+	
+	printf("CREATION DE SESSION !!!\n");
 	
 	self = (SESSION_OBJECT *)type->tp_alloc(type, 0);
 
@@ -1277,7 +1473,7 @@ SESSION_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
 
 static int 
-SESSION_init(SESSION_OBJECT *self, PyObject *args, PyObject *kwds)
+SESSION_OBJECT_init(SESSION_OBJECT *self, PyObject *args, PyObject *kwds)
 {
 	PyObject *obj;
 	OPTIONS_OBJECT *options;
@@ -1301,7 +1497,7 @@ SESSION_init(SESSION_OBJECT *self, PyObject *args, PyObject *kwds)
 // 	connect to the ssh server
 
 static PyObject *
-SSH_connect(SESSION_OBJECT *self)
+SESSION_OBJECT_connect(SESSION_OBJECT *self)
 {
 	if(self->session != NULL){
 		if(ssh_connect(self->session))
@@ -1318,12 +1514,13 @@ SSH_connect(SESSION_OBJECT *self)
 // 	disconnect from a session (client or server)
 
 static PyObject *
-SSH_disconnect(SESSION_OBJECT *self)
+SESSION_OBJECT_disconnect(SESSION_OBJECT *self)
 {
-	if(self->session != NULL){
-		ssh_disconnect(self->session);
-	}
-
+	if(self->session == NULL)
+		return NULL;
+	
+		
+	ssh_disconnect(self->session);
 	
 	Py_INCREF(Py_None);
 	return Py_None;
@@ -1337,20 +1534,21 @@ SESSION_OBJECT_get_disconnect_message(SESSION_OBJECT *self, void *closure)
 {
         const char *disconnect_message;
 
-	if(self->session != NULL){
-		//disconnect_message = ssh_get_disconnect_message(self->session);
-		if(disconnect_message != NULL){
-			Py_DECREF(self->disconnect_message);
-			self->disconnect_message = PyString_FromString(disconnect_message);
-			Py_INCREF(self->disconnect_message);
-		
-			return self->disconnect_message;
-		}
+	if(self->session == NULL)
+		return NULL;
+	
+	//disconnect_message = ssh_get_disconnect_message(self->session);
+	if(disconnect_message != NULL){
+		Py_DECREF(self->disconnect_message);
+		self->disconnect_message = PyString_FromString(disconnect_message);
+		Py_INCREF(self->disconnect_message);
+		return self->disconnect_message;
 	}
 
 	Py_INCREF(Py_None);
         return Py_None;
 }
+
 
 //int 	ssh_get_fd (SSH_SESSION *session)
 // 	recover the fd of connection
@@ -1361,17 +1559,14 @@ SESSION_OBJECT_get_fd(SESSION_OBJECT *self, void *closure)
 {
 	int fd;
 
-	if(self->session != NULL){
-		fd = ssh_get_fd(self->session);
-		Py_DECREF(self->fd);
-		self->fd = PyInt_FromLong(fd);
-		Py_INCREF(self->fd);
-		
-		return self->fd;
-	}
-
-	Py_INCREF(Py_None);
-        return Py_None;
+	if(self->session == NULL)
+		return NULL;
+	
+	fd = ssh_get_fd(self->session);
+	Py_DECREF(self->fd);
+	self->fd = PyInt_FromLong(fd);
+	Py_INCREF(self->fd);
+	return self->fd;
 }
 
 //char * 	ssh_get_issue_banner (SSH_SESSION *session)
@@ -1382,15 +1577,15 @@ SESSION_OBJECT_get_issue_banner(SESSION_OBJECT *self, void *closure)
 {
         const char *issue_banner;
 
-	if(self->session != NULL){
-		issue_banner = ssh_get_issue_banner(self->session);
-		if(issue_banner != NULL){
-			Py_DECREF(self->issue_banner);
-			self->issue_banner = PyString_FromString(issue_banner);
-			Py_INCREF(self->issue_banner);
-		
-			return self->issue_banner;
-		}
+	if(self->session == NULL)
+		return NULL;
+	
+	issue_banner = ssh_get_issue_banner(self->session);
+	if(issue_banner != NULL){
+		Py_DECREF(self->issue_banner);
+		self->issue_banner = PyString_FromString(issue_banner);
+		Py_INCREF(self->issue_banner);
+		return self->issue_banner;
 	}
 
 	Py_INCREF(Py_None);
@@ -1408,16 +1603,14 @@ SESSION_OBJECT_get_status(SESSION_OBJECT *self, void *closure)
 {
 	int status;
 	
-	if(self->session != NULL){
-		//status = ssh_get_status(self->session);
-		Py_DECREF(self->status);
-		self->status = PyInt_FromLong(status);
-		Py_INCREF(self->status);
-		return self->status;
-	}
-
-	Py_INCREF(Py_None);
-	return Py_None;
+	if(self->session == NULL)
+		return NULL;
+	
+	//status = ssh_get_status(self->session);
+	Py_DECREF(self->status);
+	self->status = PyInt_FromLong(status);
+	Py_INCREF(self->status);
+	return self->status;
 }
 
 //int 	ssh_get_version (SSH_SESSION *session)
@@ -1428,23 +1621,26 @@ SESSION_OBJECT_get_version(SESSION_OBJECT *self, void *closure)
 {
 	int ver;
 	
-	if(self->session != NULL){
-		ver = ssh_get_version(self->session);
-		Py_DECREF(self->version);
-		self->version = PyInt_FromLong(ver);
-		Py_INCREF(self->version);
-		return self->version;
-	}
-
-	Py_INCREF(Py_None);
-	return Py_None;
+	if(self->session == NULL)
+		return NULL;
+	
+	ver = ssh_get_version(self->session);
+	Py_DECREF(self->version);
+	self->version = PyInt_FromLong(ver);
+	Py_INCREF(self->version);
+	return self->version;
 }
 
 //int 	ssh_handle_packets (SSH_SESSION *session)
 
-static PyObject *SSH_handle_packets(SESSION_OBJECT *self){
+static PyObject *
+SESSION_OBJECT_handle_packets(SESSION_OBJECT *self)
+{
 	int state;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	//state = ssh_handle_packets(self->session);
 	
 	return Py_BuildValue("i", state);
@@ -1453,9 +1649,14 @@ static PyObject *SSH_handle_packets(SESSION_OBJECT *self){
 //int 	ssh_is_server_known (SSH_SESSION *session)
  //	test if the server is known
 
-static PyObject *SSH_is_server_known(SESSION_OBJECT *self){
+static PyObject *
+SESSION_OBJECT_is_server_known(SESSION_OBJECT *self)
+{
 	int state;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	state = ssh_is_server_known(self->session);
 	
 	return Py_BuildValue("i", state);
@@ -1466,6 +1667,23 @@ static PyObject *SSH_is_server_known(SESSION_OBJECT *self){
 
 //void 	ssh_set_blocking (SSH_SESSION *session, int blocking)
 //	set the session in blocking/nonblocking mode
+
+static PyObject *
+SESSION_OBJECT_set_blocking(SESSION_OBJECT *self, PyObject *args)
+{
+	int blocking;
+
+	if(self->session == NULL)
+		return NULL;
+
+	if(!PyArg_ParseTuple(args, "i", &blocking))
+		return NULL;		
+		
+	//ssh_set_blocking(self->session, blocking);
+        
+	Py_INCREF(Py_None);
+	return Py_None;
+}
 
 //void 	ssh_set_fd_except (SSH_SESSION *session)
 // 	say the session it has an exception to catch on the file descriptor
@@ -1479,10 +1697,15 @@ static PyObject *SSH_is_server_known(SESSION_OBJECT *self){
 //void 	ssh_set_options (SSH_SESSION *session, SSH_OPTIONS *options)
 // 	set the options for the current session
 
-static PyObject *SSH_set_options(SESSION_OBJECT *self, PyObject *args){
+static PyObject *
+SESSION_OBJECT_set_options(SESSION_OBJECT *self, PyObject *args)
+{
 	PyObject *obj;
 	OPTIONS_OBJECT *options;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	if(!PyArg_ParseTuple(args, "O", &obj))
 		return NULL;
 
@@ -1496,8 +1719,11 @@ static PyObject *SSH_set_options(SESSION_OBJECT *self, PyObject *args){
 //void 	ssh_silent_disconnect (SSH_SESSION *session)
 // 	disconnect impolitely from remote host
 
-static PyObject *SSH_silent_disconnect(SESSION_OBJECT *self){
-
+static PyObject *SESSION_OBJECT_silent_disconnect(SESSION_OBJECT *self)
+{	
+	if(self->session == NULL)
+		return NULL;
+	
 	ssh_silent_disconnect(self->session);
 	
 	Py_INCREF(Py_None);
@@ -1507,47 +1733,61 @@ static PyObject *SSH_silent_disconnect(SESSION_OBJECT *self){
 //int 	ssh_write_knownhost (SSH_SESSION *session)
 // 	write the current server as known in the known hosts file 
 
-static PyObject *SSH_write_knowhost(SESSION_OBJECT *self){
+static PyObject *
+SESSION_OBJECT_write_knowhost(SESSION_OBJECT *self)
+{
 	int state;
+	
+	if(self->session == NULL)
+		return NULL;
 	
 	state = ssh_write_knownhost(self->session);
 	
 	return Py_BuildValue("i", state);
 }
 
-static PyObject *SSH_get_error(SESSION_OBJECT *self){
+static PyObject *
+SESSION_OBJECT_get_error(SESSION_OBJECT *self)
+{
 	char *error;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	error = ssh_get_error(self->session);
 
 	return Py_BuildValue("s", error);
 }
 
 
-static PyObject *SSH_userauth_autopubkey(SESSION_OBJECT *self){
+
+//int 	ssh_userauth_autopubkey (SSH_SESSION *session)
+// 	Tries to automaticaly authenticate with public key and "none".
+
+static PyObject *
+SESSION_OBJECT_userauth_autopubkey(SESSION_OBJECT *self)
+{
 	int auth;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	auth = ssh_userauth_autopubkey(self->session);
 	
 	return Py_BuildValue("i", auth);
 }
 
-static PyObject *SSH_userauth_password(SESSION_OBJECT *self, PyObject *args){
-	char *username, *password;
-	int auth;
-	
-	if(!PyArg_ParseTuple(args, "ss", &username, &password))
-		return NULL;
-	
+//int 	ssh_userauth_kbdint (SSH_SESSION *session, char *user, char *submethods)
+// 	Try to authenticate through the "keyboard-interactive" method.
 
-	auth = ssh_userauth_password(self->session, NULL, password);
-
-	return Py_BuildValue("i", auth);
-}
-
-static PyObject *SSH_userauth_kbdint(SESSION_OBJECT *self, PyObject *args){
+static PyObject *
+SESSION_OBJECT_userauth_kbdint(SESSION_OBJECT *self, PyObject *args)
+{
 	char *user, *submethods;
 	int err;
+	
+	if(self->session == NULL)
+		return NULL;
 	
 	if(!PyArg_ParseTuple(args, "ss", &user, &submethods))
 		return NULL;
@@ -1557,36 +1797,67 @@ static PyObject *SSH_userauth_kbdint(SESSION_OBJECT *self, PyObject *args){
 	return Py_BuildValue("i", err);
 }
 
-static PyObject *SSH_userauth_kbdint_getnprompts(SESSION_OBJECT *self){
-	int n;
+//char * 	ssh_userauth_kbdint_getinstruction (SSH_SESSION *session)
+// 	get the "instruction" of the message block
 
-	n = ssh_userauth_kbdint_getnprompts(self->session);
-
-	return Py_BuildValue("i", n);
-}
-
-
-static PyObject *SSH_userauth_kbdint_getname(SESSION_OBJECT *self){
-	char *name;
-
-	name = ssh_userauth_kbdint_getname(self->session);
-
-	return Py_BuildValue("s", name);
-}
-
-static PyObject *SSH_userauth_kbdint_getinstruction(SESSION_OBJECT *self){
+static PyObject *
+SESSION_OBJECT_userauth_kbdint_getinstruction(SESSION_OBJECT *self)
+{
 	char *instruction;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	instruction = ssh_userauth_kbdint_getinstruction(self->session);
 
 	return Py_BuildValue("s", instruction);
 }
 
-static PyObject *SSH_userauth_kbdint_getprompt(SESSION_OBJECT *self, PyObject *args){
+//char * 	ssh_userauth_kbdint_getname (SSH_SESSION *session)
+// 	get the "name" of the message block
+
+static PyObject *
+SESSION_OBJECT_userauth_kbdint_getname(SESSION_OBJECT *self)
+{
+	char *name;
+
+	if(self->session == NULL)
+		return NULL;
+	
+	name = ssh_userauth_kbdint_getname(self->session);
+
+	return Py_BuildValue("s", name);
+}
+
+//int 	ssh_userauth_kbdint_getnprompts (SSH_SESSION *session)
+// 	get the number of prompts (questions) the server has given
+
+static PyObject *
+SESSION_OBJECT_userauth_kbdint_getnprompts(SESSION_OBJECT *self)
+{
+	int n;
+
+	if(self->session == NULL)
+		return NULL;
+	
+	n = ssh_userauth_kbdint_getnprompts(self->session);
+
+	return Py_BuildValue("i", n);
+}
+
+//char * 	ssh_userauth_kbdint_getprompt (SSH_SESSION *session, int i, char *echo)
+// 	get a prompt from a message block
+
+static PyObject *
+SESSION_OBJECT_userauth_kbdint_getprompt(SESSION_OBJECT *self, PyObject *args)
+{
 	int i;
 	char echo;
 	char *prompt;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	if(!PyArg_ParseTuple(args, "i", &i))
 		return NULL;
 	
@@ -1595,13 +1866,52 @@ static PyObject *SSH_userauth_kbdint_getprompt(SESSION_OBJECT *self, PyObject *a
 	return Py_BuildValue("si", prompt, echo);
 }
 
-static PyObject *SSH_userauth_kbdint_setanswer(SESSION_OBJECT *self, PyObject *args){
+//void 	ssh_userauth_kbdint_setanswer (SSH_SESSION *session, unsigned int i, char *answer)
+// 	set the answer for a question from a message block.
+
+//int 	ssh_userauth_none (SSH_SESSION *session, char *username)
+// 	Try to authenticate through the "none" method.
+
+//int 	ssh_userauth_offer_pubkey (SSH_SESSION *session, char *username, int type, STRING *publickey)
+// 	Try to authenticate through public key.
+
+//int 	ssh_userauth_password (SSH_SESSION *session, char *username, char *password)
+// 	Try to authenticate by password.
+
+static PyObject *
+SESSION_OBJECT_userauth_password(SESSION_OBJECT *self, PyObject *args)
+{
+	char *username, *password;
+	int auth;
+	
+	if(self->session == NULL)
+		return NULL;
+	
+	if(!PyArg_ParseTuple(args, "s",  &password))
+		return NULL;
+
+	auth = ssh_userauth_password(self->session, NULL, password);
+
+	return Py_BuildValue("i", auth);
+}
+
+//int 	ssh_userauth_pubkey (SSH_SESSION *session, char *username, STRING *publickey, PRIVATE_KEY *privatekey)
+// 	Try to authenticate through public key. 
+		
+	
+
+
+static PyObject *
+SESSION_OBJECT_userauth_kbdint_setanswer(SESSION_OBJECT *self, PyObject *args)
+{
 	int i;
 	char *answer;
 
+	if(self->session == NULL)
+		return NULL;
+	
 	if(!PyArg_ParseTuple(args, "is", &i, &answer))
 		return NULL;
-
 
 	ssh_userauth_kbdint_setanswer(self->session, i, answer);
 
@@ -1610,24 +1920,22 @@ static PyObject *SSH_userauth_kbdint_setanswer(SESSION_OBJECT *self, PyObject *a
 }
 
 static PyMethodDef SESSION_OBJECT_methods[] = {
-	{ "set_options", (PyCFunction)SSH_set_options, METH_VARARGS, "blabla" },
-	
-	{ "get_error", (PyCFunction)SSH_get_error, METH_NOARGS, "blabla" },
-	{ "handle_packets", (PyCFunction)SSH_handle_packets, METH_NOARGS, "blabla" },
-	{ "is_server_known", (PyCFunction)SSH_is_server_known, METH_NOARGS, "blabla" },
-	
-	{ "userauth_autopubkey", (PyCFunction)SSH_userauth_autopubkey, METH_NOARGS, "blabla" },
+	{ "connect", (PyCFunction)SESSION_OBJECT_connect, METH_NOARGS, "connect" },
+	{ "set_options", (PyCFunction)SESSION_OBJECT_set_options, METH_VARARGS, "blabla" },
+	{ "handle_packets", (PyCFunction)SESSION_OBJECT_handle_packets, METH_NOARGS, "blabla" },
+	{ "is_server_known", (PyCFunction)SESSION_OBJECT_is_server_known, METH_NOARGS, "blabla" },
 
-	{ "userauth_password", (PyCFunction)SSH_userauth_password, METH_VARARGS, "blabla" },
+	{ "get_error", (PyCFunction)SESSION_OBJECT_get_error, METH_NOARGS, "blabla" },
 	
-	{ "userauth_kbdint", (PyCFunction)SSH_userauth_kbdint, METH_VARARGS, "blabla" },
-	{ "userauth_kbdint_getnprompts", (PyCFunction)SSH_userauth_kbdint_getnprompts, METH_NOARGS, "blabla" },
-	{ "userauth_kbdint_getname", (PyCFunction)SSH_userauth_kbdint_getname, METH_NOARGS, "blabla" },
-	{ "userauth_kbdint_getinstruction", (PyCFunction)SSH_userauth_kbdint_getinstruction, METH_NOARGS, "blabla" },
-	{ "userauth_kbdint_getprompt", (PyCFunction)SSH_userauth_kbdint_getprompt, METH_VARARGS, "blabla" },
-	{ "userauth_kbdint_setanswer", (PyCFunction)SSH_userauth_kbdint_setanswer, METH_VARARGS, "blabla" },
+	{ "userauth_autopubkey", (PyCFunction)SESSION_OBJECT_userauth_autopubkey, METH_NOARGS, "blabla" },
+	{ "userauth_password", (PyCFunction)SESSION_OBJECT_userauth_password, METH_VARARGS, "blabla" },
+	{ "userauth_kbdint", (PyCFunction)SESSION_OBJECT_userauth_kbdint, METH_VARARGS, "blabla" },
+	{ "userauth_kbdint_getnprompts", (PyCFunction)SESSION_OBJECT_userauth_kbdint_getnprompts, METH_NOARGS, "blabla" },
+	{ "userauth_kbdint_getname", (PyCFunction)SESSION_OBJECT_userauth_kbdint_getname, METH_NOARGS, "blabla" },
+	{ "userauth_kbdint_getinstruction", (PyCFunction)SESSION_OBJECT_userauth_kbdint_getinstruction, METH_NOARGS, "blabla" },
+	{ "userauth_kbdint_getprompt", (PyCFunction)SESSION_OBJECT_userauth_kbdint_getprompt, METH_VARARGS, "blabla" },
+	{ "userauth_kbdint_setanswer", (PyCFunction)SESSION_OBJECT_userauth_kbdint_setanswer, METH_VARARGS, "blabla" },
 	
-	{ "connect", (PyCFunction)SSH_connect, METH_NOARGS, "connect" },
 	{ NULL }
 };
 
@@ -1651,7 +1959,7 @@ static PyTypeObject SESSION_OBJECT_type = {
 	"pylibssh.SESSION",		/* tp_name */
 	sizeof(SESSION_OBJECT),		/* tp_basicsize */
 	0,				/* tp_itemsize */	
-	(destructor)SESSION_dealloc, 	/* tp_dealloc */
+	(destructor)SESSION_OBJECT_dealloc, 	/* tp_dealloc */
 	0,				/* tp_print*/
         0,				/* tp_getattr */
 	0,                      	/* tp_setattr */
@@ -1683,11 +1991,98 @@ static PyTypeObject SESSION_OBJECT_type = {
 	0,				/* tp_descr_get */
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
-	(initproc)SESSION_init,		/* tp_init */
+	(initproc)SESSION_OBJECT_init,		/* tp_init */
 	0,				/* tp_alloc */
-	SESSION_new,			/* tp_new */
+	SESSION_OBJECT_new,			/* tp_new */
 };
 
+
+static void BIND_OBJECT_dealloc(BIND_OBJECT *self)
+{
+	printf("JE ME BARRE DE BIND !!\n");
+
+	if(self->bind != NULL)
+		ssh_bind_free(self->bind);
+	
+	self->bind = NULL;
+
+        self->ob_type->tp_free((PyObject *)self);
+}
+
+static PyObject *BIND_OBJECT_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+	BIND_OBJECT *self;
+
+	printf("CREATION DE BIND !!!\n");
+
+	self = (BIND_OBJECT *)type->tp_alloc(type, 0);
+
+	if(self != NULL){
+		self->bind = ssh_bind_new();
+	}
+
+	return (PyObject *)self;
+}
+
+static int BIND_OBJECT_init(BIND_OBJECT *self, PyObject *args, PyObject *kwds)
+{
+	return 0;
+}
+
+static PyMethodDef BIND_OBJECT_methods[] = {
+	{ NULL }
+};
+
+static PyMemberDef BIND_OBJECT_members[] = {
+	{ NULL }
+};
+
+static PyGetSetDef BIND_OBJECT_getseters[] = {
+	{ NULL }  /* Sentinel */
+};
+
+static PyTypeObject BIND_OBJECT_type = {
+	PyObject_HEAD_INIT(NULL)
+	0,				/* ob_size */
+	"pylibssh.BIND",		/* tp_name */
+	sizeof(BIND_OBJECT),		/* tp_basicsize */
+	0,				/* tp_itemsize */	
+	(destructor)BIND_OBJECT_dealloc, 	/* tp_dealloc */
+	0,				/* tp_print*/
+        0,				/* tp_getattr */
+	0,                      	/* tp_setattr */
+	0,              	        /* tp_compare */
+	0,      	                /* tp_repr */
+	0,	                        /* tp_as_number */
+	0,                         	/* tp_as_sequence */
+	0,				/* tp_as_mapping */
+	0,				/* tp_hash */
+	0,				/* tp_call */
+	0,				/* tp_str */
+	0,				/* tp_getattro */
+	0,				/* tp_setattro */
+	0,				/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT,		/* tp_flags */	
+	"BIND_OBJECT",		/* tp_doc */
+        0,				/* tp_traverse */
+	0,				/* tp_clear */
+	0,				/* tp_richcompare */
+	0,				/* tp_weaklistoffset */
+	0,				/* tp_iter */
+	0,				/* tp_iternext */
+	BIND_OBJECT_methods,		/* tp_methods */
+	0,
+	//BIND_OBJECT_members,	/* tp_members */
+	BIND_OBJECT_getseters,	/* tp_getset */
+	0,				/* tp_base */
+	0,				/* tp_dict */
+	0,				/* tp_descr_get */
+	0,				/* tp_descr_set */
+	0,				/* tp_dictoffset */
+	(initproc)BIND_OBJECT_init,		/* tp_init */
+	0,				/* tp_alloc */
+	BIND_OBJECT_new,			/* tp_new */
+};
 
 static void install_int_const(PyObject *d, char *name, int value){
 	PyObject *v = PyInt_FromLong( (long)value );
@@ -1712,7 +2107,11 @@ void initpylibssh(void){
 	if(PyType_Ready(&CHANNEL_OBJECT_type) < 0)
 		return ;
 
+	if(PyType_Ready(&BIND_OBJECT_type) < 0)
+		return;
+	
 	m = Py_InitModule("pylibssh", NULL);
+	
 	Py_INCREF(&BUFFER_OBJECT_type);
 	PyModule_AddObject(m, "BUFFER", (PyObject *)&BUFFER_OBJECT_type);
 	
@@ -1724,6 +2123,9 @@ void initpylibssh(void){
 
 	Py_INCREF(&CHANNEL_OBJECT_type);
 	PyModule_AddObject(m, "CHANNEL", (PyObject *)&CHANNEL_OBJECT_type);
+	
+	Py_INCREF(&BIND_OBJECT_type);
+	PyModule_AddObject(m, "BIND", (PyObject *)&BIND_OBJECT_type);
 	
 	d = PyModule_GetDict(m);
 
