@@ -5,6 +5,7 @@ import getpass
 import termios
 import fcntl
 import array
+import select
 import pylibssh
 
 def auth_kdbint(session):
@@ -29,7 +30,7 @@ def auth_kdbint(session):
 	return err	
 			
 if __name__ == "__main__":
-	print "------ DEBUT TEST ------"
+	print "------ DEBUT SAMPLE SSH ------"
 
 	#options = libssh.OPTIONS(["-l", "shy", "localhost"])
 	options = pylibssh.OPTIONS("shy", "localhost", 22)
@@ -69,14 +70,16 @@ if __name__ == "__main__":
 	print ssh.version
 
 	if(auth != pylibssh.SSH_AUTH_SUCCESS) :
+		print "AUTH_KDBINT"
 		auth = auth_kdbint(ssh)
 		if(auth == pylibssh.SSH_AUTH_ERROR) :
-			ssh.get_error()
+			print ssh.get_error()
 			sys.exit(-1)
 			
 	if(auth !=pylibssh.SSH_AUTH_SUCCESS) :
+		print "AUTH_PASSWORD"
 		if(ssh.userauth_password("fuck") != pylibssh.SSH_AUTH_SUCCESS) :
-			ssh.get_error()
+			print ssh.get_error()
 			sys.exit(-1)
 			
 	channel = pylibssh.CHANNEL(ssh)
@@ -96,7 +99,7 @@ if __name__ == "__main__":
 		channel.change_pty_size(win[0], win[1])
 		
 	if(channel.request_shell()):
-		ssh.get_error();
+		print ssh.get_error();
 		sys.exit(-1)
 	
 	if(interactive) :
@@ -105,7 +108,20 @@ if __name__ == "__main__":
 		#####
 		termios.tcsetattr(0, termios.TCSANOW, terminal_local)
 
-	
+	while 1 :
+		maxfd = ssh.fd + 1
+		(rr, wr, er) = select.select([ssh.fd], [], [], 30)
+		if ssh.fd in rr :
+			print "la"
+		if ssh.fd :
+			print "here"
+			channel.send_eof()
+		
+			
+		#for fd in rr :
+		#	print fd
+		
+		
 	#if(channel.request_exec("echo bla > /tmp/truc")) : 
 	#	print ssh.get_error()
 	
@@ -120,4 +136,4 @@ if __name__ == "__main__":
 
 	#print ssh.is_server_known()
 
-	print "------ END TEST ------"
+	print "------ END SAMPLE SSH ------"
