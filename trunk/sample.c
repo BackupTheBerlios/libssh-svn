@@ -471,7 +471,6 @@ int main(int argc, char **argv){
             exit(-1);
         case SSH_SERVER_NOT_KNOWN:
             hexa = ssh_get_hexa(hash, hlen);
-            free(hash);
             fprintf(stderr,"The server is unknown. Do you trust the host key ?\n");
             fprintf(stderr, "Public key hash: %s\n", hexa);
             free(hexa);
